@@ -1,0 +1,15 @@
+# local environments
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+
+# build output
+frontend/dist/
+
+# pipeline artefacts — these are inputs and outputs, not source
+frames.json
+*.mp4
+audio.wav
+artwork.jpg
+frontend/*.tsbuildinfo

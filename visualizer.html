@@ -1,0 +1,315 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>visualizer</title>
+<style>
+  @font-face {
+    font-family: "Display";
+    src: url("./fonts/display.woff2") format("woff2");
+    font-display: block;
+  }
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+  body.preview { display: grid; place-items: center; height: 100vh; }
+  body.preview canvas { max-width: 100vw; max-height: 100vh; object-fit: contain; }
+  #audio { position: fixed; bottom: 12px; left: 12px; width: 360px; z-index: 2; }
+  body:not(.preview) #audio { display: none; }
+</style>
+
+<canvas id="c"></canvas>
+<audio id="audio" controls></audio>
+
+<script>
+// ---------------------------------------------------------------------------
+// CONTRACT
+//   window.vizReady           -> true once assets are decoded
+//   window.renderFrame(i)     -> draws frame i synchronously, no rAF, no random
+//   window.meta               -> { frames, fps }
+// render.py drives those three. Everything below the CONTRACT line is design
+// and can be replaced wholesale (e.g. with Claude Design output) as long as
+// renderFrame stays deterministic.
+// ---------------------------------------------------------------------------
+
+const params  = new URLSearchParams(location.search);
+const W       = +(params.get("w") || 1920);
+const H       = +(params.get("h") || 1080);
+const PREVIEW = params.get("preview") === "1";
+const TITLE   = params.get("title")  || "";
+const ARTIST  = params.get("artist") || "";
+// the uploaded cover keeps its own extension; render.py passes the filename
+const ART     = params.get("art")    || "artwork.jpg";
+
+const cv  = document.getElementById("c");
+cv.width  = W;
+cv.height = H;
+const ctx = cv.getContext("2d", { alpha: false });
+
+// deterministic noise — no Math.random anywhere in the render path
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const off = (w, h) => {
+  const o = document.createElement("canvas");
+  o.width = w; o.height = h;
+  return o;
+};
+
+let F, art, palette, channels, burnLayers, grain, vignette, barGrad, layout;
+
+// --- palette straight out of the artwork -----------------------------------
+// The record's own colours, not a palette I picked. Coarse quantise, then pick
+// the darkest bucket as ground and the most saturated as ember.
+function samplePalette(img) {
+  const s = off(64, 64), sc = s.getContext("2d");
+  sc.drawImage(img, 0, 0, 64, 64);
+  const px = sc.getImageData(0, 0, 64, 64).data;
+  const buckets = new Map();
+  for (let i = 0; i < px.length; i += 4) {
+    const key = (px[i] >> 4) * 289 + (px[i + 1] >> 4) * 17 + (px[i + 2] >> 4);
+    const b = buckets.get(key) || [0, 0, 0, 0];
+    b[0] += px[i]; b[1] += px[i + 1]; b[2] += px[i + 2]; b[3]++;
+    buckets.set(key, b);
+  }
+  const cols = [...buckets.values()]
+    .filter(b => b[3] > 12)
+    .map(b => [b[0] / b[3], b[1] / b[3], b[2] / b[3]]);
+  const lum = c => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+  const sat = c => (Math.max(...c) - Math.min(...c)) / (Math.max(...c) || 1);
+
+  const ground = cols.slice().sort((a, b) => lum(a) - lum(b))[0] || [10, 9, 9];
+  // Exclude blown highlights and near-black: a clipped white sun has high
+  // luminance and no colour, and it will win a naive "most vivid" sort every
+  // time. The ember has to come from the midtones or it comes out beige.
+  const mids = cols.filter(c => lum(c) > 0.18 && lum(c) < 0.88);
+  const ember = (mids.length ? mids : cols)
+    .slice().sort((a, b) => (sat(b) * (Math.max(...b) - Math.min(...b)))
+                          - (sat(a) * (Math.max(...a) - Math.min(...a))))[0]
+    || [196, 74, 32];
+  const bone   = cols.slice().sort((a, b) => lum(b) - lum(a))[0] || [201, 194, 180];
+  const rgb    = c => `rgb(${c.map(v => Math.round(v)).join(",")})`;
+  return {
+    ground: rgb(ground.map(v => v * 0.35)),
+    ember,
+    emberCss: rgb(ember),
+    bone: rgb(bone),
+  };
+}
+
+// --- channel-separated copies for the transient split ----------------------
+function channelSplit(img, w, h) {
+  const make = (tint) => {
+    const o = off(w, h), c = o.getContext("2d");
+    c.drawImage(img, 0, 0, w, h);
+    c.globalCompositeOperation = "multiply";
+    c.fillStyle = tint;
+    c.fillRect(0, 0, w, h);
+    return o;
+  };
+  return { r: make("#ff0000"), g: make("#00ff00"), b: make("#0000ff") };
+}
+
+// --- SIGNATURE: the burn ---------------------------------------------------
+// Ten luminance thresholds of the cover, filled with the ember colour. On each
+// kick the threshold drops, so more of the artwork ignites from its highlights
+// inward. The cover looks like it's burning from inside on every hit — which is
+// the one thing the whole piece is remembered by, so nothing else moves much.
+function buildBurn(img, w, h, ember) {
+  const src = off(w, h), sc = src.getContext("2d");
+  sc.drawImage(img, 0, 0, w, h);
+  const base = sc.getImageData(0, 0, w, h).data;
+  const layers = [];
+  for (let t = 0; t < 10; t++) {
+    const thr = 0.80 - t * 0.062;
+    const o = off(w, h), oc = o.getContext("2d");
+    const id = oc.createImageData(w, h), d = id.data;
+    for (let i = 0; i < base.length; i += 4) {
+      const l = (0.2126 * base[i] + 0.7152 * base[i + 1] + 0.0722 * base[i + 2]) / 255;
+      if (l > thr) {
+        d[i]     = ember[0];
+        d[i + 1] = ember[1];
+        d[i + 2] = ember[2];
+        d[i + 3] = Math.round(255 * Math.min(1, (l - thr) / 0.14));
+      }
+    }
+    oc.putImageData(id, 0, 0);
+    layers.push(o);
+  }
+  return layers;
+}
+
+// Eight full-frame grain sheets, built once. Tiling a 512px square every frame
+// costs more than the memory does, and at 4K it dominates the draw budget.
+function buildGrain() {
+  const sheets = [];
+  for (let t = 0; t < 8; t++) {
+    const rnd = mulberry32(1337 + t * 977);
+    const tile = off(512, 512), tc = tile.getContext("2d");
+    const id = tc.createImageData(512, 512), d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = 110 + rnd() * 90;
+      d[i] = d[i + 1] = d[i + 2] = v;
+      d[i + 3] = 255;
+    }
+    tc.putImageData(id, 0, 0);
+    const o = off(W, H), c = o.getContext("2d");
+    for (let gy = 0; gy < H; gy += 512)
+      for (let gx = 0; gx < W; gx += 512) c.drawImage(tile, gx, gy);
+    sheets.push(o);
+  }
+  return sheets;
+}
+
+// One ember->nothing strip, stretched per bar. Building 24 linear gradients
+// every frame costs more than the entire rest of the draw.
+function buildBarGradient(ember) {
+  const o = off(1, 256), c = o.getContext("2d");
+  const g = c.createLinearGradient(0, 0, 0, 256);
+  const e = ember.map(v => Math.round(v));
+  g.addColorStop(0.00, `rgba(${e},0.95)`);
+  g.addColorStop(0.35, `rgba(${e},0.42)`);
+  g.addColorStop(1.00, `rgba(${e},0)`);
+  c.fillStyle = g;
+  c.fillRect(0, 0, 1, 256);
+  return o;
+}
+
+// Vignette baked once — building a radial gradient per frame is surprisingly
+// expensive in software rasterisation, which is what headless Chromium uses.
+function buildVignette() {
+  const o = off(W, H), c = o.getContext("2d");
+  const g = c.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
+  g.addColorStop(0, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(0,0,0,0.55)");
+  c.fillStyle = g;
+  c.fillRect(0, 0, W, H);
+  return o;
+}
+
+// ---------------------------------------------------------------------------
+function renderFrame(i) {
+  i = Math.max(0, Math.min(F.frames - 1, i | 0));
+  const kick  = F.kick[i], crack = F.crack[i];
+  const wall  = F.wall[i], hit   = F.hit[i];
+  const spec  = F.spectrum[i];
+  const { x, y, w, h } = layout;
+
+  ctx.fillStyle = palette.ground;
+  ctx.fillRect(0, 0, W, H);
+
+  // artwork, breathing on the low end
+  const s  = 1 + kick * 0.018 + wall * 0.006;
+  const dw = w * s, dh = h * s;
+  const dx = x - (dw - w) / 2, dy = y - (dh - h) / 2;
+
+  // Only real transients displace the image. A continuous split just reads as
+  // a badly converged CRT, and at 240 BPM it never resets.
+  const split = Math.max(0, hit - 0.62) * 14;
+  if (split > 0.5) {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.drawImage(channels.r, dx - split, dy, dw, dh);
+    ctx.drawImage(channels.g, dx, dy, dw, dh);
+    ctx.drawImage(channels.b, dx + split, dy, dw, dh);
+    ctx.globalCompositeOperation = "source-over";
+  } else {
+    ctx.drawImage(art, dx, dy, dw, dh);
+  }
+
+  // the burn
+  if (kick > 0.03) {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.min(1, kick * 1.05);
+    ctx.drawImage(burnLayers[Math.min(9, Math.floor(kick * 9.99))], dx, dy, dw, dh);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // spectrum as the shadow the cover casts: bars bleed downward out of the
+  // artwork's lower edge and dissolve, so it reads as the record giving off
+  // sound rather than a meter parked underneath it
+  const base = y + h;
+  const gap  = W * 0.0022;
+  const bw   = (w - gap * (F.bands - 1)) / F.bands;
+  const maxH = (H - base) * 0.92;
+  for (let b = 0; b < F.bands; b++) {
+    const v = Math.pow(spec[b], 1.7);       // gamma: dB-flat looks inert
+    if (v <= 0.015) continue;
+    ctx.globalAlpha = 0.14 + v * 0.5;
+    ctx.drawImage(barGrad, 0, 0, 1, 256,
+                  x + b * (bw + gap), base, bw, v * maxH);
+  }
+  ctx.globalAlpha = 1;
+
+  // credit line — print caption, not a title card
+  if (TITLE || ARTIST) {
+    ctx.font = `${Math.round(H * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
+    ctx.fillStyle = palette.bone;
+    ctx.globalAlpha = 0.30 + crack * 0.25;
+    ctx.letterSpacing = `${Math.round(H * 0.006)}px`;
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(ARTIST.toUpperCase(), x, y - H * 0.028);
+    ctx.globalAlpha = 0.62 + crack * 0.30;
+    ctx.fillText(TITLE.toUpperCase(), x, y - H * 0.010);
+    ctx.globalAlpha = 1;
+    ctx.letterSpacing = "0px";
+  }
+
+  // grain + vignette
+  ctx.globalCompositeOperation = "overlay";
+  ctx.globalAlpha = 0.055 + hit * 0.03;
+  ctx.drawImage(grain[i % 8], 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(vignette, 0, 0);
+}
+
+// ---------------------------------------------------------------------------
+(async function init() {
+  F = await (await fetch("./frames.json")).json();
+
+  art = new Image();
+  await new Promise((res, rej) => {
+    art.onload = res;
+    art.onerror = () => rej(new Error(ART + " not found"));
+    art.src = "./" + ART;
+  });
+
+  const h = Math.round(H * 0.62);
+  const w = Math.round(h * (art.width / art.height));
+  layout = { w, h, x: Math.round((W - w) / 2), y: Math.round(H * 0.10) };
+
+  palette    = samplePalette(art);
+  channels   = channelSplit(art, w, h);
+  burnLayers = buildBurn(art, w, h, palette.ember);
+  grain      = buildGrain();
+  vignette   = buildVignette();
+  barGrad    = buildBarGradient(palette.ember);
+
+  // If a display font is shipped, load it before the first frame: a face that
+  // arrives on frame 3 would make frames 0-2 the only ones in the fallback.
+  try {
+    await document.fonts.load(`${Math.round(H * 0.0135)}px Display`);
+    await document.fonts.ready;
+  } catch (e) { /* no display font: the fallback stack is the design */ }
+
+  window.meta        = { frames: F.frames, fps: F.fps };
+  window.renderFrame = renderFrame;
+  renderFrame(0);
+  window.vizReady = true;
+
+  if (PREVIEW) {
+    document.body.classList.add("preview");
+    const a = document.getElementById("audio");
+    a.src = params.get("audio") || "./audio.wav";
+    const loop = () => {
+      renderFrame(Math.round(a.currentTime * F.fps));
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+})();
+</script>

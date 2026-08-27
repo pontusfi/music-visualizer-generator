@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    # headless chromium dies on the default 64 MB of shared memory
+    shm_size: 1gb
+    environment:
+      # renders are CPU-bound; more than one at a time just makes both slower
+      MVG_MAX_WORKERS: "1"
+      MVG_MAX_AUDIO_MB: "512"
+      MVG_MAX_IMAGE_MB: "32"
+      MVG_JOB_TTL_SECONDS: "7200"
+    volumes:
+      - jobs:/data/jobs
+    expose:
+      - "8000"
+    ports:
+      # handy for curling the API directly; the UI does not need it
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  jobs:
