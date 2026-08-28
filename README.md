@@ -153,21 +153,49 @@ aspect, off one `frames.json`.
 
 ### Speed
 
-Measured in a container with software rasterisation, quality-100 JPEG capture:
+Both columns measured in the same container run, software rasterisation, same
+6s range of the same track:
 
-| output | approx | 8-minute track |
-|---|---|---|
-| 720p (1280x720 / 720x1280) @ 60 | 11 fps | ~45 min |
-| 1080p (1920x1080 / 1080x1920) @ 60 | 8 fps | ~1 hr |
-| 2160p (3840x2160 / 2160x3840) @ 60 | 2 fps | overnight |
+| output | `--capture webcodecs` (default) | `--capture jpeg` (old) | 8-minute track |
+|---|---|---|---|
+| 720p (1280x720 / 720x1280) @ 60 | 217 fps | 30 fps | ~2 min, was ~16 |
+| 1080p (1920x1080 / 1080x1920) @ 60 | 98 fps | 16 fps | ~5 min, was ~30 |
+| 2160p (3840x2160 / 2160x3840) @ 60 | 25 fps | 5 fps | ~19 min, was ~91 |
 
 The tier is the short edge, and an aspect only turns the frame, so a portrait
 cut costs what its landscape twin costs. Rendering both is two passes: two rows'
 worth of time off one analysis.
 
-Frame capture dominates, not drawing. `--png` gives lossless capture at roughly
-6x the time; since the output is `yuv420p` H.264 either way, the difference does
-not survive to the delivered file. Use `--fps 30` while iterating.
+### How frames leave the page
+
+Getting the pixels out used to be the whole cost — about 45ms of the 52ms each
+1080p frame took, against ~10ms to draw it. Each frame was JPEG-encoded inside
+Chromium, base64'd over the debug protocol, then decoded and thrown away so
+x264 could make an H.264 frame out of it.
+
+So the page encodes its own H.264 now, via `VideoEncoder` (WebCodecs), and
+ffmpeg only muxes it against the audio — `-c:v copy`, x264 never runs. It is
+also *better*, because the old path lost quality twice, once to JPEG and once
+to x264, where the encoder now reads the canvas pixels directly. Against a
+lossless reference of the same 3s at 1080p:
+
+| | luma PSNR | luma SSIM |
+|---|---|---|
+| `webcodecs` | 54.4 dB | 0.9976 |
+| `jpeg` | 48.8 dB | 0.9746 |
+
+`--capture auto` (the default) uses it where the browser has it and falls back
+to `jpeg` where it does not, saying which on the `rendering frames ...` line.
+Naming `--capture webcodecs` outright makes it an error rather than a silent
+downgrade. `--capture png` is still there for a lossless intermediate, and is
+still by far the slowest thing here.
+
+The in-page encoder has no CRF — this Chromium refuses `bitrateMode:
+"quantizer"` — so `--crf` is mapped to a target bitrate at six points per
+doubling, which keeps the quality picker meaningful. `--bitrate MBPS` overrides
+it. Note that on easy material the encoder simply will not spend the top of
+that budget, so crf 14 and 16 can land on the same file. Use `--fps 30` while
+iterating.
 
 ## The Claude Design seam
 
