@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 import pytest
 
@@ -46,7 +47,9 @@ class _FakeProc:
 class FakeRunner:
     """Stands in for the real subprocess runner.
 
-    ``plan`` maps a stage name to (lines, exit_code, files_the_stage_creates).
+    ``plan`` maps a stage name to (lines, exit_code, writes_its_output). The
+    output path is read back off the command's own ``-o``, so a stage that is
+    told to write two different files over two calls really does.
     """
 
     def __init__(self, plan=None):
@@ -59,23 +62,25 @@ class FakeRunner:
         return "analyze" if "analyze.py" in cmd[1] else "render"
 
     def run(self, cmd, cwd, on_line, on_process=None):
-        self.calls.append(list(cmd))
+        cmd = list(cmd)
+        self.calls.append(cmd)
         stage = self._stage(cmd)
-        lines, code, files = self.plan.get(stage, ([], 0, []))
+        lines, code, writes = self.plan.get(stage, ([], 0, True))
         if on_process is not None:
             on_process(_FakeProc(stage, self.cancelled))
         for line in lines:
             on_line(line)
-        for name in files:
-            (cwd / name).write_bytes(b"x" * 32)
+        if writes:
+            out = Path(cmd[cmd.index("-o") + 1])
+            (out if out.is_absolute() else cwd / out).write_bytes(b"x" * 32)
         return code
 
 
-ANALYZE_OK = (['##MVG {"stage": "analyze", "pct": 1.0}'], 0, ["frames.json"])
+ANALYZE_OK = (['##MVG {"stage": "analyze", "pct": 1.0}'], 0, True)
 RENDER_OK = (
     ['##MVG {"stage": "render", "frame": 10, "start": 0, "end": 20}'],
     0,
-    ["out.mp4"],
+    True,
 )
 HAPPY = {"analyze": ANALYZE_OK, "render": RENDER_OK}
 
@@ -86,9 +91,14 @@ def make_manager(settings, plan=None, runner=None):
 
 
 def default_params(**over):
-    base = dict(fps=60, width=1280, height=720, title="Track", artist="Band")
+    base = dict(fps=60, resolution=720, title="Track", artist="Band")
     base.update(over)
     return JobParams(**base)
+
+
+def geometry(cmd):
+    """The -w/-H pair a render command carries."""
+    return (int(cmd[cmd.index("-w") + 1]), int(cmd[cmd.index("-H") + 1]))
 
 
 def basename(path: str) -> str:
@@ -99,21 +109,64 @@ class TestJobParams:
     def test_defaults_are_a_usable_render(self):
         p = JobParams()
         assert p.fps in (30, 60)
-        assert p.width % 2 == 0 and p.height % 2 == 0
+        assert p.aspects == ["16:9"]
+        assert [(o.width, o.height) for o in p.outputs()] == [(1920, 1080)]
         assert p.preview_start is None and p.preview_end is None
 
-    def test_rejects_odd_dimensions(self):
+    def test_one_resolution_derives_both_orientations(self):
+        outputs = JobParams(resolution=1080, aspects=["16:9", "9:16"]).outputs()
+        assert [(o.key, o.aspect, o.width, o.height) for o in outputs] == [
+            ("landscape", "16:9", 1920, 1080),
+            ("portrait", "9:16", 1080, 1920),
+        ]
+
+    def test_the_resolution_is_the_short_edge_in_either_orientation(self):
+        for short, long in ((720, 1280), (1080, 1920), (1440, 2560), (2160, 3840)):
+            outputs = JobParams(resolution=short, aspects=["16:9", "9:16"]).outputs()
+            assert [(o.width, o.height) for o in outputs] == [
+                (long, short),
+                (short, long),
+            ]
+
+    def test_every_tier_derives_dimensions_yuv420p_can_encode(self):
+        for short in (720, 1080, 1440, 2160):
+            for o in JobParams(resolution=short, aspects=["16:9", "9:16"]).outputs():
+                assert o.width % 2 == 0 and o.height % 2 == 0
+
+    def test_each_output_gets_a_file_of_its_own(self):
+        outputs = JobParams(aspects=["16:9", "9:16"]).outputs()
+        assert len({o.filename for o in outputs}) == 2
+        assert all(o.filename.endswith(".mp4") for o in outputs)
+
+    def test_rejects_an_odd_resolution(self):
         # yuv420p cannot encode an odd width or height
         with pytest.raises(ValueError):
-            JobParams(width=1281)
-        with pytest.raises(ValueError):
-            JobParams(height=721)
+            JobParams(resolution=721)
 
-    def test_rejects_absurd_dimensions(self):
+    def test_rejects_an_absurd_resolution(self):
         with pytest.raises(ValueError):
-            JobParams(width=16)
+            JobParams(resolution=16)
         with pytest.raises(ValueError):
-            JobParams(width=99998)
+            JobParams(resolution=99998)
+
+    def test_accepts_a_portrait_4k(self):
+        # the old landscape-shaped caps (height <= 4320, width <= 7680) made a
+        # 2160x3840 render unrepresentable
+        outputs = JobParams(resolution=2160, aspects=["9:16"]).outputs()
+        assert [(o.width, o.height) for o in outputs] == [(2160, 3840)]
+
+    def test_rejects_a_job_with_no_aspect_at_all(self):
+        with pytest.raises(ValueError):
+            JobParams(aspects=[])
+
+    def test_rejects_an_aspect_it_cannot_lay_out(self):
+        with pytest.raises(ValueError):
+            JobParams(aspects=["4:3"])
+
+    def test_rejects_the_same_aspect_twice(self):
+        # two identical renders is never what someone meant to ask for
+        with pytest.raises(ValueError):
+            JobParams(aspects=["16:9", "16:9"])
 
     def test_rejects_preview_end_before_start(self):
         with pytest.raises(ValueError):
@@ -373,6 +426,120 @@ class TestRun:
         manager.submit(job.id)
         assert not any("##MVG" in line for line in job.log)
 
+    def test_two_aspects_analyse_once_and_render_twice(self, settings):
+        # frames.json does not depend on the frame size, so the expensive
+        # librosa pass is shared and only the cheap stage repeats
+        manager, runner = make_manager(settings)
+        job = manager.create(
+            default_params(aspects=["16:9", "9:16"]), ("a.png", png()), ("a.wav", wav())
+        )
+        manager.submit(job.id)
+        assert [basename(c[1]) for c in runner.calls] == [
+            "analyze.py",
+            "render.py",
+            "render.py",
+        ]
+        assert [geometry(c) for c in runner.calls[1:]] == [(1280, 720), (720, 1280)]
+        assert job.state is JobState.DONE
+        assert job.progress == pytest.approx(1.0)
+
+    def test_both_aspects_land_as_separate_files(self, settings):
+        manager, _ = make_manager(settings)
+        job = manager.create(
+            default_params(aspects=["16:9", "9:16"]), ("a.png", png()), ("a.wav", wav())
+        )
+        manager.submit(job.id)
+        paths = [o.path for o in job.outputs]
+        assert len(set(paths)) == 2
+        assert all(p.exists() for p in paths)
+
+    def test_the_first_finished_aspect_is_what_a_bare_video_request_gets(self, settings):
+        manager, _ = make_manager(settings)
+        job = manager.create(
+            default_params(aspects=["16:9", "9:16"]), ("a.png", png()), ("a.wav", wav())
+        )
+        manager.submit(job.id)
+        assert job.video_path == job.outputs[0].path
+
+    def test_progress_is_shared_out_across_the_aspects(self, settings):
+        plan = {
+            "analyze": ([], 0, True),
+            "render": (
+                ['##MVG {"stage": "render", "frame": 100, "start": 0, "end": 100}'],
+                0,
+                True,
+            ),
+        }
+        manager, _ = make_manager(settings, plan)
+        job = manager.create(
+            default_params(aspects=["16:9", "9:16"]), ("a.png", png()), ("a.wav", wav())
+        )
+        seen = []
+        manager.watch(job.id, lambda j: seen.append(j.progress))
+        manager.submit(job.id)
+        # the first aspect finishing its frames is only halfway through the
+        # render band, not the whole job
+        assert any(0.55 < p < 0.7 for p in seen), seen
+        assert seen == sorted(seen), "progress must never go backwards"
+        assert job.progress == pytest.approx(1.0)
+
+    def test_cancelling_during_the_first_aspect_skips_the_second(self, settings):
+        manager, runner = make_manager(settings)
+        job = manager.create(
+            default_params(aspects=["16:9", "9:16"]), ("a.png", png()), ("a.wav", wav())
+        )
+
+        def kill_on_first_render(j):
+            if j.state is JobState.RENDERING and j.render_index == 0:
+                manager.cancel(j.id)
+
+        manager.watch(job.id, kill_on_first_render)
+        manager.submit(job.id)
+        assert job.state is JobState.CANCELLED
+        assert [basename(c[1]) for c in runner.calls] == ["analyze.py", "render.py"]
+
+    def test_a_failure_on_the_second_aspect_fails_the_whole_job(self, settings):
+        manager, _ = make_manager(settings)
+        job = manager.create(
+            default_params(aspects=["16:9", "9:16"]), ("a.png", png()), ("a.wav", wav())
+        )
+
+        original = manager.runner.run
+        calls = {"n": 0}
+
+        def fail_the_second_render(cmd, cwd, on_line, on_process=None):
+            calls["n"] += 1
+            if calls["n"] == 3:
+                on_line("ffmpeg is not on PATH")
+                return 4
+            return original(cmd, cwd, on_line, on_process)
+
+        manager.runner.run = fail_the_second_render
+        manager.submit(job.id)
+        assert job.state is JobState.FAILED
+        assert "ffmpeg" in job.error.lower()
+
+    def test_a_single_aspect_job_still_says_it_is_rendering_frames(self, settings):
+        # the one-output message is what the UI has always shown; only a
+        # two-output job needs to name which one is running
+        manager, _ = make_manager(settings)
+        job = manager.create(default_params(), ("a.png", png()), ("a.wav", wav()))
+        seen = []
+        manager.watch(job.id, lambda j: seen.append(j.message))
+        manager.submit(job.id)
+        assert "Rendering frames" in seen
+
+    def test_a_two_aspect_job_names_the_one_it_is_working_on(self, settings):
+        manager, _ = make_manager(settings)
+        job = manager.create(
+            default_params(aspects=["16:9", "9:16"]), ("a.png", png()), ("a.wav", wav())
+        )
+        seen = []
+        manager.watch(job.id, lambda j: seen.append(j.message))
+        manager.submit(job.id)
+        assert any("16:9" in m for m in seen)
+        assert any("9:16" in m for m in seen)
+
     def test_preview_window_is_forwarded_to_render(self, settings):
         manager, runner = make_manager(settings)
         job = manager.create(
@@ -468,3 +635,24 @@ class TestDownloadName:
             default_params(artist="", title=""), ("a.png", png()), ("a.wav", wav())
         )
         assert manager.download_name(job) == "visualizer.mp4"
+
+    def test_names_the_aspect_when_a_job_produced_more_than_one_video(self, settings):
+        manager, _ = make_manager(settings)
+        job = manager.create(
+            default_params(artist="OLD NIGHT", title="Ashes", aspects=["16:9", "9:16"]),
+            ("a.png", png()),
+            ("a.wav", wav()),
+        )
+        names = [manager.download_name(job, o) for o in job.outputs]
+        assert names == ["OLD NIGHT - Ashes (16x9).mp4", "OLD NIGHT - Ashes (9x16).mp4"]
+
+    def test_leaves_the_name_clean_when_there_is_only_one_video(self, settings):
+        # a colon is not a filename character, so the suffix has to be spelled
+        # out — but a single-aspect render should not carry one at all
+        manager, _ = make_manager(settings)
+        job = manager.create(
+            default_params(artist="OLD NIGHT", title="Ashes"),
+            ("a.png", png()),
+            ("a.wav", wav()),
+        )
+        assert manager.download_name(job, job.outputs[0]) == "OLD NIGHT - Ashes.mp4"

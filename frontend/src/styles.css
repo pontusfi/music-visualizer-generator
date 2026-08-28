@@ -765,15 +765,48 @@ body {
   padding: 22px;
 }
 
+/* aspect-ratio is set inline from the chosen output, so this box is 16:9 or
+   9:16 depending on what is being rendered.
+   The height is the explicit edge and the width is derived from the ratio: with
+   an explicit WIDTH instead, max-height clamps the height and the ratio is
+   simply ignored — which is why this box used to render at 2.1:1 whatever it
+   was told. max-width then reins in a wide frame in a narrow window. */
 .stage__canvas {
   position: relative;
-  width: 100%;
-  max-width: 1180px;
-  aspect-ratio: 16 / 9;
+  height: 100%;
+  width: auto;
+  max-width: min(1180px, 100%);
   max-height: 100%;
   background: var(--well);
   border: 1px solid var(--line);
   overflow: hidden;
+}
+
+.stage__tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.stage__tab {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  color: var(--dim);
+  background: var(--well);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.stage__tab:hover {
+  color: var(--ink);
+}
+
+.stage__tab--on {
+  color: var(--acc-ink);
+  background: var(--acc);
+  border-color: var(--acc);
 }
 
 .stage__canvas canvas,

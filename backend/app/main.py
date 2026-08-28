@@ -94,8 +94,8 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
         image: UploadFile = File(...),
         audio: UploadFile = File(...),
         fps: int = Form(60),
-        width: int = Form(1920),
-        height: int = Form(1080),
+        resolution: int = Form(1080),
+        aspects: list[str] = Form(["16:9"]),
         title: str = Form(""),
         artist: str = Form(""),
         crf: int = Form(16),
@@ -110,8 +110,8 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
             params = JobParams(
                 fps=fps,
                 sample_rate=settings.sample_rate,
-                width=width,
-                height=height,
+                resolution=resolution,
+                aspects=aspects,
                 title=title,
                 artist=artist,
                 crf=crf,
@@ -175,12 +175,27 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
         )
 
     @app.get("/api/jobs/{job_id}/video")
-    async def job_video(job_id: str, download: int = 0, mgr: JobManager = Depends(get_manager)):
+    async def job_video(
+        job_id: str,
+        variant: str | None = None,
+        download: int = 0,
+        mgr: JobManager = Depends(get_manager),
+    ):
         job = require_job(job_id, mgr)
-        if job.video_path is None or not job.video_path.exists():
+        if variant is None:
+            # no aspect named: whichever finished first, which is the only one
+            # for the single-output job the UI used to make
+            output = next((o for o in job.outputs if o.done), None)
+        else:
+            output = job.output(variant)
+            if output is None:
+                raise HTTPException(
+                    status_code=404, detail=f"this job has no {variant!r} video"
+                )
+        if output is None or not output.done or not output.path.exists():
             raise HTTPException(status_code=409, detail=f"job is {job.state.value}")
-        kwargs = {"filename": mgr.download_name(job)} if download else {}
-        return FileResponse(job.video_path, media_type="video/mp4", **kwargs)
+        kwargs = {"filename": mgr.download_name(job, output)} if download else {}
+        return FileResponse(output.path, media_type="video/mp4", **kwargs)
 
     @app.get("/api/jobs/{job_id}/artwork")
     async def job_artwork(job_id: str, mgr: JobManager = Depends(get_manager)):

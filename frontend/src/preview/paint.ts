@@ -107,31 +107,37 @@ export function drawStage(canvas: HTMLCanvasElement, o: StageOptions): void {
     ctx.fillRect(0, 0, w, h);
   }
 
+  /* Sizes and the offsets that anchor them to the bottom edge key off the short
+     edge, not the height: in a 9:16 box the height is the long one, and type
+     scaled to it comes out nearly twice too big. At 16:9 the short edge IS the
+     height, so this is the landscape preview unchanged. */
+  const unit = Math.min(w, h);
+
   const pad = w * 0.055;
   const slot = (w - pad * 2) / o.bands;
   for (let i = 0; i < o.bands; i += 1) {
     const v = Math.max(0, Math.min(1, o.sample(i, o.bands)));
-    const bh = Math.pow(v, 1.25) * h * 0.3;
+    const bh = Math.pow(v, 1.25) * unit * 0.3;
     ctx.fillStyle = o.accent;
     ctx.globalAlpha = 0.28 + v * 0.6;
-    ctx.fillRect(pad + i * slot + slot * 0.16, h - h * 0.075 - bh, slot * 0.68, bh);
+    ctx.fillRect(pad + i * slot + slot * 0.16, h - unit * 0.075 - bh, slot * 0.68, bh);
   }
   ctx.globalAlpha = 0.5;
   ctx.fillStyle = o.accent;
-  ctx.fillRect(pad, h - h * 0.075, w - pad * 2, Math.max(1, h * 0.0022));
+  ctx.fillRect(pad, h - unit * 0.075, w - pad * 2, Math.max(1, unit * 0.0022));
   ctx.globalAlpha = 1;
 
   const artist = o.artist.toUpperCase();
   const title = o.title.toUpperCase();
   if (artist || title) {
     ctx.textBaseline = "alphabetic";
-    setTracking(ctx, `${h * 0.006}px`);
+    setTracking(ctx, `${unit * 0.006}px`);
     ctx.fillStyle = o.accent;
-    ctx.font = `600 ${h * 0.036}px "Barlow Condensed", "Arial Narrow", sans-serif`;
-    ctx.fillText(artist, pad, h * 0.845);
+    ctx.font = `600 ${unit * 0.036}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+    ctx.fillText(artist, pad, h - unit * 0.155);
     ctx.fillStyle = "#f2f0ec";
-    ctx.font = `700 ${h * 0.078}px "Barlow Condensed", "Arial Narrow", sans-serif`;
-    ctx.fillText(title, pad, h * 0.925);
+    ctx.font = `700 ${unit * 0.078}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+    ctx.fillText(title, pad, h - unit * 0.075);
     setTracking(ctx, "0px");
   }
 
@@ -150,10 +156,10 @@ export function drawStage(canvas: HTMLCanvasElement, o: StageOptions): void {
   const vignette = ctx.createRadialGradient(
     w / 2,
     h / 2,
-    h * 0.2,
+    unit * 0.2,
     w / 2,
     h / 2,
-    h * 0.85,
+    unit * 0.85,
   );
   vignette.addColorStop(0, "rgba(0,0,0,0)");
   vignette.addColorStop(1, "rgba(0,0,0,0.6)");

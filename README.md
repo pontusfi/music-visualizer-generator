@@ -43,11 +43,23 @@ about to render.
 
 Three presets cover the usual answers: **Test window**, **Delivery** (1080p60,
 crf 16), and **Master** (2160p60, crf 14). Each quotes an estimate once the
-track's length is known. Behind *Advanced* sit resolution, frame rate, x264
-preset, quality, the two analysis settings worth touching from outside — band
-count and the harmonic/percussive split — and the test window's own bounds.
+track's length is known. Behind *Advanced* sit aspect, resolution, frame rate,
+x264 preset, quality, the two analysis settings worth touching from outside —
+band count and the harmonic/percussive split — and the test window's own bounds.
 That window is the same `--preview` range the CLI takes, and it is still the
 right way to judge the look before committing an hour.
+
+Aspect is 16:9, 9:16, or both. Resolution is the **short** edge, so 1080p means
+1920x1080 landscape and 1080x1920 portrait — the same pixel count, and so the
+same render time, either way. The cover is laid out against whichever edge
+binds: at 16:9 it takes 62% of the height, and on a phone frame, where that
+would push it off both sides, it takes 86% of the width instead and the
+cover-plus-spectrum block is centred.
+
+Ticking both cuts renders both from one upload. `frames.json` does not depend on
+the frame size, so the analysis pass is shared and only the drawing repeats: one
+job, one progress bar, two mp4s. It is still two renders' worth of frames, so
+budget about twice the wall clock of one.
 
 The stage plays the master locally through a WebAudio analyser and draws an
 impression of the render from the cover, its highlights, and the live spectrum,
@@ -59,7 +71,8 @@ by hue and keeping the heaviest bin.
 
 Once a job starts, the footer becomes the progress read-out and a console opens
 under the stage with the log tail. When the render lands, the stage shows the
-finished mp4 in place of the preview.
+finished mp4 in place of the preview — with a tab per aspect when there are two,
+and a download button for each.
 
 ### API
 
@@ -69,7 +82,7 @@ finished mp4 in place of the preview.
 | `POST` | `/api/jobs` | multipart `image` + `audio` + render settings → job |
 | `GET` | `/api/jobs/{id}` | state, progress, ETA, log tail |
 | `GET` | `/api/jobs/{id}/events` | the same as server-sent events |
-| `GET` | `/api/jobs/{id}/video` | the mp4 (`?download=1` to name the file) |
+| `GET` | `/api/jobs/{id}/video` | the mp4 (`?variant=landscape\|portrait` to pick an aspect, `?download=1` to name the file) |
 | `POST` | `/api/jobs/{id}/cancel` | kill the running stage |
 | `DELETE` | `/api/jobs/{id}` | drop the job and its directory |
 
@@ -123,7 +136,14 @@ python render.py --preview 30 45 --artist "BAND" --title "TRACK" -o test.mp4
 
 # 4. render the whole thing
 python render.py -w 1920 -H 1080 --artist "BAND" --title "TRACK" -o out.mp4
+
+# 5. the same track as a phone cut — the layout refits itself to the frame
+python render.py -w 1080 -H 1920 --artist "BAND" --title "TRACK" -o vertical.mp4
 ```
+
+`render.py` takes any even `-w`/`-H`; `visualizer.html` lays the cover out
+against whichever edge binds, so a portrait frame needs no other flag. The web
+UI drives exactly this, once per aspect, off one `frames.json`.
 
 ### Speed
 
@@ -131,9 +151,13 @@ Measured in a container with software rasterisation, quality-100 JPEG capture:
 
 | output | approx | 8-minute track |
 |---|---|---|
-| 1280x720 @ 60 | 11 fps | ~45 min |
-| 1920x1080 @ 60 | 8 fps | ~1 hr |
-| 3840x2160 @ 60 | 2 fps | overnight |
+| 720p (1280x720 / 720x1280) @ 60 | 11 fps | ~45 min |
+| 1080p (1920x1080 / 1080x1920) @ 60 | 8 fps | ~1 hr |
+| 2160p (3840x2160 / 2160x3840) @ 60 | 2 fps | overnight |
+
+The tier is the short edge, and an aspect only turns the frame, so a portrait
+cut costs what its landscape twin costs. Rendering both is two passes: two rows'
+worth of time off one analysis.
 
 Frame capture dominates, not drawing. `--png` gives lossless capture at roughly
 6x the time; since the output is `yuv420p` H.264 either way, the difference does

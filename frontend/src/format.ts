@@ -1,6 +1,8 @@
 import type { JobState } from "./types";
 
-/** Frames per second the renderer manages at a given output height.
+/** Frames per second the renderer manages at a given output tier, keyed by the
+ *  SHORT edge: 1080x1920 and 1920x1080 are the same number of pixels and cost
+ *  the same, so the tier is what decides the rate, not which way it turns.
  *  Measured in a container with software rasterisation; a real machine beats it. */
 const MEASURED_RATE: Array<[number, number]> = [
   [720, 11],
@@ -57,22 +59,25 @@ export function frameCount(
   return Math.round((end - start) * fps);
 }
 
-function rateFor(height: number): number {
-  for (const [h, rate] of MEASURED_RATE) {
-    if (height <= h) return rate;
+function rateFor(resolution: number): number {
+  for (const [tier, rate] of MEASURED_RATE) {
+    if (resolution <= tier) return rate;
   }
   return MEASURED_RATE[MEASURED_RATE.length - 1][1];
 }
 
-/** Rough wall-clock estimate, deliberately quoted as "about". */
+/** Rough wall-clock estimate, deliberately quoted as "about". ``videos`` is how
+ *  many aspects this one upload is cut for: the analysis is shared but each cut
+ *  draws every frame again, so two aspects really is twice the wait. */
 export function estimateRenderMinutes(
   duration: number,
   fps: number,
-  height: number,
+  resolution: number,
   preview?: PreviewWindow | null,
+  videos = 1,
 ): number {
   const frames = frameCount(duration, fps, preview);
-  return frames / rateFor(height) / 60;
+  return (frames * videos) / rateFor(resolution) / 60;
 }
 
 const LABELS: Record<JobState, string> = {

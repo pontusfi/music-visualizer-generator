@@ -1,6 +1,6 @@
 import { videoUrl } from "../api";
 import { estimateRenderMinutes, formatApprox, formatBytes, formatEta, stateLabel } from "../format";
-import type { RenderSettings } from "../settings";
+import { plannedOutputs, type RenderSettings } from "../settings";
 import type { Job } from "../types";
 
 interface Props {
@@ -42,17 +42,23 @@ export function ActionBar({
       )
     : null;
 
+  const planned = plannedOutputs(settings);
+
   const minutes =
     duration == null
       ? null
       : estimateRenderMinutes(
           duration,
           settings.fps,
-          settings.height,
+          settings.resolution,
           settings.previewEnabled
             ? { start: settings.previewStart, end: settings.previewEnd }
             : null,
+          planned.length,
         );
+
+  /** Once a job is done, what there is to download. */
+  const finished = job?.outputs?.filter((o) => o.done) ?? [];
 
   const progress = uploading ? uploaded : (job?.progress ?? 0);
   const phase = uploading ? "Uploading" : job ? job.message || stateLabel(job.state) : "";
@@ -99,7 +105,9 @@ export function ActionBar({
               : ready
                 ? `${settings.previewEnabled ? "Test window" : "Full render"}${
                     frames ? ` · ${frames.toLocaleString()} frames` : ""
-                  } @ ${settings.height}p`
+                  } @ ${settings.resolution}p · ${planned
+                    .map((o) => o.aspect)
+                    .join(" + ")}`
                 : "Awaiting source"}
           </span>
           <span className="action__estimate-sub">
@@ -125,11 +133,18 @@ export function ActionBar({
             {done ? "New render" : "Start over"}
           </button>
         )}
-        {done && job && (
-          <a className="btn btn--go" href={videoUrl(job.id, true)} download>
-            Download mp4
-          </a>
-        )}
+        {done &&
+          job &&
+          finished.map((output) => (
+            <a
+              key={output.key}
+              className="btn btn--go"
+              href={videoUrl(job.id, output.key, true)}
+              download
+            >
+              {finished.length > 1 ? `Download ${output.aspect}` : "Download mp4"}
+            </a>
+          ))}
         {broken && (
           <button type="button" className="btn btn--go" onClick={onStart} disabled={!ready}>
             Retry render

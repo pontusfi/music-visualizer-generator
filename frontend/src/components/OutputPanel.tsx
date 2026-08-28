@@ -32,7 +32,10 @@ export function OutputPanel({
     <section className="rail__block">
       <div className="rail__head">
         <h2 className="rail__title">03 · Output</h2>
-        <span className="rail__status">{chosen ? chosen.name : "Custom"}</span>
+        <span className="rail__status">
+          {chosen ? chosen.name : "Custom"}
+          {settings.aspects.length > 1 ? " · 16:9 + 9:16" : ""}
+        </span>
       </div>
 
       <div className="presets">
@@ -45,10 +48,11 @@ export function OutputPanel({
               : estimateRenderMinutes(
                   duration,
                   next.fps,
-                  next.height,
+                  next.resolution,
                   next.previewEnabled
                     ? { start: next.previewStart, end: next.previewEnd }
                     : null,
+                  next.aspects.length,
                 );
           return (
             <button
@@ -82,7 +86,7 @@ export function OutputPanel({
           className={advancedOpen ? "disclose__arrow disclose__arrow--open" : "disclose__arrow"}
           aria-hidden="true"
         />
-        {advancedOpen ? "Hide advanced" : "Advanced · resolution, quality, analysis"}
+        {advancedOpen ? "Hide advanced" : "Advanced · aspect, resolution, quality, analysis"}
       </button>
     </section>
   );

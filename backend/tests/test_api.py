@@ -27,8 +27,10 @@ def client(settings, manager):
 
 
 def upload(client, *, image=("cover.png", "image/png"), audio=("song.wav", "audio/wav"), **fields):
-    data = {"fps": "60", "width": "1280", "height": "720"}
-    data.update({k: str(v) for k, v in fields.items()})
+    data = {"fps": "60", "resolution": "720"}
+    # httpx sends a list value as repeated keys, which is how several aspects
+    # arrive from a browser form too
+    data.update({k: v if isinstance(v, list) else str(v) for k, v in fields.items()})
     return client.post(
         "/api/jobs",
         files={
@@ -92,8 +94,26 @@ class TestCreateJob:
         r = upload(client, fps=32)
         assert r.status_code == 422
 
-    def test_rejects_odd_dimensions(self, client):
-        assert upload(client, width=1281).status_code == 422
+    def test_rejects_an_odd_resolution(self, client):
+        assert upload(client, resolution=721).status_code == 422
+
+    def test_defaults_to_a_single_landscape_output(self, client):
+        body = upload(client).json()
+        assert body["params"]["aspects"] == ["16:9"]
+        assert [(o["width"], o["height"]) for o in body["outputs"]] == [(1280, 720)]
+
+    def test_accepts_both_aspects_in_one_job(self, client, runner):
+        body = upload(client, aspects=["16:9", "9:16"]).json()
+        assert [o["key"] for o in body["outputs"]] == ["landscape", "portrait"]
+        assert [(o["width"], o["height"]) for o in body["outputs"]] == [
+            (1280, 720),
+            (720, 1280),
+        ]
+        # one analysis, two renders
+        assert len(runner.calls) == 3
+
+    def test_rejects_an_aspect_it_cannot_lay_out(self, client):
+        assert upload(client, aspects=["4:3"]).status_code == 422
 
 
 class TestJobStatus:
@@ -149,6 +169,38 @@ class TestVideo:
 
     def test_video_of_an_unknown_job_is_404(self, client):
         assert client.get("/api/jobs/nope/video").status_code == 404
+
+    def test_serves_each_aspect_by_name(self, client):
+        job_id = upload(client, aspects=["16:9", "9:16"]).json()["id"]
+        for variant in ("landscape", "portrait"):
+            r = client.get(f"/api/jobs/{job_id}/video?variant={variant}")
+            assert r.status_code == 200, variant
+            assert r.headers["content-type"] == "video/mp4"
+
+    def test_a_bare_video_request_serves_the_first_aspect(self, client):
+        job_id = upload(client, aspects=["16:9", "9:16"]).json()["id"]
+        bare = client.get(f"/api/jobs/{job_id}/video").content
+        assert bare == client.get(f"/api/jobs/{job_id}/video?variant=landscape").content
+
+    def test_an_unknown_variant_is_404(self, client):
+        job_id = upload(client, aspects=["16:9"]).json()["id"]
+        assert client.get(f"/api/jobs/{job_id}/video?variant=portrait").status_code == 404
+        assert client.get(f"/api/jobs/{job_id}/video?variant=nope").status_code == 404
+
+    def test_downloading_two_aspects_gives_two_distinguishable_filenames(self, client):
+        job_id = upload(
+            client, title="Ashes", artist="OLD NIGHT", aspects=["16:9", "9:16"]
+        ).json()["id"]
+        names = [
+            unquote(
+                client.get(
+                    f"/api/jobs/{job_id}/video?variant={v}&download=1"
+                ).headers["content-disposition"]
+            )
+            for v in ("landscape", "portrait")
+        ]
+        assert "OLD NIGHT - Ashes (16x9).mp4" in names[0]
+        assert "OLD NIGHT - Ashes (9x16).mp4" in names[1]
 
 
 class TestArtwork:

@@ -27,8 +27,15 @@ export const cancelJob = (id: string) =>
 export const deleteJob = (id: string) =>
   fetch(`${BASE}/api/jobs/${id}`, { method: "DELETE" });
 
-export const videoUrl = (id: string, download = false) =>
-  `${BASE}/api/jobs/${id}/video${download ? "?download=1" : ""}`;
+/** ``variant`` is the server's name for one aspect of a job ("landscape" /
+ *  "portrait"); left off, the server serves whichever finished first. */
+export const videoUrl = (id: string, variant?: string | null, download = false) => {
+  const query = new URLSearchParams();
+  if (variant) query.set("variant", variant);
+  if (download) query.set("download", "1");
+  const suffix = query.toString();
+  return `${BASE}/api/jobs/${id}/video${suffix ? `?${suffix}` : ""}`;
+};
 
 /** POSTs the two files. XHR rather than fetch, because a 90 MB master deserves
  *  an upload bar of its own. */

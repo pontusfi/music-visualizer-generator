@@ -180,9 +180,9 @@ function buildBarGradient(ember) {
 
 // Vignette baked once — building a radial gradient per frame is surprisingly
 // expensive in software rasterisation, which is what headless Chromium uses.
-function buildVignette() {
+function buildVignette(unit) {
   const o = off(W, H), c = o.getContext("2d");
-  const g = c.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.95);
+  const g = c.createRadialGradient(W / 2, H / 2, unit * 0.3, W / 2, H / 2, unit * 0.95);
   g.addColorStop(0, "rgba(0,0,0,0)");
   g.addColorStop(1, "rgba(0,0,0,0.55)");
   c.fillStyle = g;
@@ -190,13 +190,47 @@ function buildVignette() {
   return o;
 }
 
+// ---8<--- geometry (unit-tested by frontend/src/vizLayout.test.ts) ----------
+// One rule for any frame shape. The cover wants 62% of the height; a frame too
+// narrow to give it that binds on the width instead, and the cover-plus-bars
+// block is centred rather than left hanging off the top. At 16:9 the width
+// never binds for an ordinary cover, so this is the geometry the design was
+// drawn at, to the pixel.
+//
+// 0.4155 is (0.28H x 0.92) / 0.62H: the 16:9 bar height expressed against the
+// cover instead of against the leftover strip below it. Keyed to the cover, the
+// spectrum stays the same weight on a phone frame, where the strip is enormous.
+const BAR_SHARE = 0.4155;
+
+function computeLayout(W, H, ar) {
+  let h = Math.round(H * 0.62);
+  let w = Math.round(h * ar);
+  let y = Math.round(H * 0.10);
+  const maxW = Math.round(W * 0.86);
+  if (w > maxW) {
+    w = maxW;
+    h = Math.round(w / ar);
+    y = Math.round((H - h - h * BAR_SHARE) * 0.5);
+  }
+  const base = y + h;
+  return {
+    x: Math.round((W - w) / 2),
+    y, w, h, base,
+    barMax: Math.min((H - base) * 0.92, h * BAR_SHARE),
+    // sizes key off the short edge, not the height: on a 9:16 frame the height
+    // is the long one, and type scaled to it comes out nearly twice too big
+    unit: Math.min(W, H),
+  };
+}
+// ---8<--- end geometry -----------------------------------------------------
+
 // ---------------------------------------------------------------------------
 function renderFrame(i) {
   i = Math.max(0, Math.min(F.frames - 1, i | 0));
   const kick  = F.kick[i], crack = F.crack[i];
   const wall  = F.wall[i], hit   = F.hit[i];
   const spec  = F.spectrum[i];
-  const { x, y, w, h } = layout;
+  const { x, y, w, h, base, barMax, unit } = layout;
 
   ctx.fillStyle = palette.ground;
   ctx.fillRect(0, 0, W, H);
@@ -231,29 +265,27 @@ function renderFrame(i) {
   // spectrum as the shadow the cover casts: bars bleed downward out of the
   // artwork's lower edge and dissolve, so it reads as the record giving off
   // sound rather than a meter parked underneath it
-  const base = y + h;
   const gap  = W * 0.0022;
   const bw   = (w - gap * (F.bands - 1)) / F.bands;
-  const maxH = (H - base) * 0.92;
   for (let b = 0; b < F.bands; b++) {
     const v = Math.pow(spec[b], 1.7);       // gamma: dB-flat looks inert
     if (v <= 0.015) continue;
     ctx.globalAlpha = 0.14 + v * 0.5;
     ctx.drawImage(barGrad, 0, 0, 1, 256,
-                  x + b * (bw + gap), base, bw, v * maxH);
+                  x + b * (bw + gap), base, bw, v * barMax);
   }
   ctx.globalAlpha = 1;
 
   // credit line — print caption, not a title card
   if (TITLE || ARTIST) {
-    ctx.font = `${Math.round(H * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
+    ctx.font = `${Math.round(unit * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
     ctx.fillStyle = palette.bone;
     ctx.globalAlpha = 0.30 + crack * 0.25;
-    ctx.letterSpacing = `${Math.round(H * 0.006)}px`;
+    ctx.letterSpacing = `${Math.round(unit * 0.006)}px`;
     ctx.textBaseline = "alphabetic";
-    ctx.fillText(ARTIST.toUpperCase(), x, y - H * 0.028);
+    ctx.fillText(ARTIST.toUpperCase(), x, y - unit * 0.028);
     ctx.globalAlpha = 0.62 + crack * 0.30;
-    ctx.fillText(TITLE.toUpperCase(), x, y - H * 0.010);
+    ctx.fillText(TITLE.toUpperCase(), x, y - unit * 0.010);
     ctx.globalAlpha = 1;
     ctx.letterSpacing = "0px";
   }
@@ -278,21 +310,20 @@ function renderFrame(i) {
     art.src = "./" + ART;
   });
 
-  const h = Math.round(H * 0.62);
-  const w = Math.round(h * (art.width / art.height));
-  layout = { w, h, x: Math.round((W - w) / 2), y: Math.round(H * 0.10) };
+  layout = computeLayout(W, H, art.width / art.height);
+  const { w, h } = layout;
 
   palette    = samplePalette(art);
   channels   = channelSplit(art, w, h);
   burnLayers = buildBurn(art, w, h, palette.ember);
   grain      = buildGrain();
-  vignette   = buildVignette();
+  vignette   = buildVignette(layout.unit);
   barGrad    = buildBarGradient(palette.ember);
 
   // If a display font is shipped, load it before the first frame: a face that
   // arrives on frame 3 would make frames 0-2 the only ones in the fallback.
   try {
-    await document.fonts.load(`${Math.round(H * 0.0135)}px Display`);
+    await document.fonts.load(`${Math.round(layout.unit * 0.0135)}px Display`);
     await document.fonts.ready;
   } catch (e) { /* no display font: the fallback stack is the design */ }
 

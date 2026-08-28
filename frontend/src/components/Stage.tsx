@@ -1,7 +1,8 @@
-import type { RefObject } from "react";
+import { type RefObject, useState } from "react";
 
+import { videoUrl } from "../api";
 import { formatClock } from "../format";
-import type { RenderSettings } from "../settings";
+import { type Aspect, plannedOutputs, type RenderSettings } from "../settings";
 import type { Job } from "../types";
 
 interface Props {
@@ -11,8 +12,23 @@ interface Props {
   hasCover: boolean;
   playing: boolean;
   job: Job | null;
-  /** Set once the render lands, and the stage shows the mp4 instead of the canvas. */
-  videoSrc: string | null;
+}
+
+/** What the stage is showing: the aspects a finished job actually produced,
+ *  or — before that — the ones the current settings will produce. */
+function shownOutputs(settings: RenderSettings, job: Job | null) {
+  if (job?.state === "done") {
+    const done = job.outputs.filter((o) => o.done);
+    if (done.length) {
+      return done.map((o) => ({
+        aspect: o.aspect as Aspect,
+        width: o.width,
+        height: o.height,
+        variant: o.key,
+      }));
+    }
+  }
+  return plannedOutputs(settings).map((o) => ({ ...o, variant: null }));
 }
 
 export function Stage({
@@ -22,9 +38,15 @@ export function Stage({
   hasCover,
   playing,
   job,
-  videoSrc,
 }: Props) {
-  const done = job?.state === "done" && videoSrc !== null;
+  const [chosen, setChosen] = useState<Aspect | null>(null);
+
+  const outputs = shownOutputs(settings, job);
+  // the choice is a preference, not a source of truth: unticking an aspect, or
+  // a job that rendered a different set, falls back to the first one going
+  const active = outputs.find((o) => o.aspect === chosen) ?? outputs[0];
+
+  const done = job?.state === "done" && active.variant !== null;
   const broken = job?.state === "failed" || job?.state === "cancelled";
   const took =
     job?.finished_at && job?.started_at ? job.finished_at - job.started_at : null;
@@ -45,9 +67,26 @@ export function Stage({
           <span className="stage__pipe" aria-hidden="true">
             |
           </span>
+          {outputs.length > 1 && (
+            <span className="stage__tabs" role="group" aria-label="Aspect ratio">
+              {outputs.map((o) => (
+                <button
+                  key={o.aspect}
+                  type="button"
+                  className={
+                    o.aspect === active.aspect ? "stage__tab stage__tab--on" : "stage__tab"
+                  }
+                  aria-pressed={o.aspect === active.aspect}
+                  onClick={() => setChosen(o.aspect)}
+                >
+                  {o.aspect}
+                </button>
+              ))}
+            </span>
+          )}
           <span className="mono-dim">
-            {settings.width}×{settings.height} · {settings.fps} fps · crf{" "}
-            {settings.crf} · {settings.preset}
+            {active.width}×{active.height} · {settings.fps} fps · crf {settings.crf} ·{" "}
+            {settings.preset}
           </span>
         </div>
         <div className="stage__bar-right">
@@ -76,11 +115,16 @@ export function Stage({
       </div>
 
       <div className="stage__frame">
-        <div className="stage__canvas">
-          {done ? (
+        <div
+          className="stage__canvas"
+          style={{ aspectRatio: `${active.width} / ${active.height}` }}
+        >
+          {done && job ? (
             <video
+              // a fresh element per aspect, or the browser keeps the old frames
+              key={active.variant}
               className="stage__video"
-              src={videoSrc}
+              src={videoUrl(job.id, active.variant)}
               controls
               autoPlay
               playsInline
