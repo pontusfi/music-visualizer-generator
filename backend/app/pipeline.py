@@ -80,6 +80,7 @@ def render_command(
     artist: str,
     crf: int,
     preset: str,
+    look: str | None = None,
     preview: tuple[float, float] | None = None,
 ) -> list[str]:
     cmd = [
@@ -107,6 +108,8 @@ def render_command(
         artist,
         "--progress",
     ]
+    if look:
+        cmd += ["--look", look]
     if preview is not None:
         cmd += ["--preview", str(preview[0]), str(preview[1])]
     return cmd

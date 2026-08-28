@@ -12,6 +12,8 @@ export interface RenderSettings {
   preset: string;
   bands: number;
   hpss: boolean;
+  /** which design viz/looks draws; see LOOKS below */
+  look: string;
   previewEnabled: boolean;
   previewStart: number;
   previewEnd: number;
@@ -27,6 +29,7 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   preset: "slow",
   bands: 24,
   hpss: true,
+  look: "burn",
   previewEnabled: false,
   previewStart: 30,
   previewEnd: 45,
@@ -134,6 +137,7 @@ export function toFormData(
   form.append("preset", settings.preset);
   form.append("bands", String(settings.bands));
   form.append("hpss", settings.hpss ? "true" : "false");
+  form.append("look", settings.look);
   if (settings.previewEnabled) {
     form.append("preview_start", String(settings.previewStart));
     form.append("preview_end", String(settings.previewEnd));
@@ -217,3 +221,30 @@ export function matchPreset(settings: RenderSettings): string | null {
   );
   return hit ? hit.id : null;
 }
+
+export interface Look {
+  id: string;
+  name: string;
+  /** One line for the picker: what it does, not how. */
+  note: string;
+}
+
+/** Must stay in step with viz/looks/index.js and schemas.LOOKS.
+ *  A backend test asserts every id here has a registered module. */
+export const LOOKS: Look[] = [
+  {
+    id: "burn",
+    name: "Burn",
+    note: "the cover ignites from its own highlights on every kick",
+  },
+  {
+    id: "orbit",
+    name: "Orbit",
+    note: "the record spins, spectrum wrapped round the rim",
+  },
+  {
+    id: "shear",
+    name: "Shear",
+    note: "the artwork tears along the spectrum and reassembles",
+  },
+];

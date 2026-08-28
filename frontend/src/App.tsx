@@ -5,6 +5,7 @@ import { bestDuration, probeDuration } from "./audio";
 import { ActionBar } from "./components/ActionBar";
 import { AdvancedPanel } from "./components/AdvancedPanel";
 import { Console } from "./components/Console";
+import { LookPanel } from "./components/LookPanel";
 import { OutputPanel } from "./components/OutputPanel";
 import { SourcePanel } from "./components/SourcePanel";
 import { Stage } from "./components/Stage";
@@ -235,6 +236,8 @@ export default function App() {
               </label>
             </div>
           </section>
+
+          <LookPanel settings={settings} disabled={busy} onChange={patch} />
 
           <OutputPanel
             settings={settings}

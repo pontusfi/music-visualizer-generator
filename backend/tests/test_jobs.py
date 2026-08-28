@@ -215,6 +215,35 @@ class TestCreate:
         job = manager.create(default_params(), ("a.png", png()), ("a.wav", wav()))
         assert (job.dir / "visualizer.html").exists()
 
+    def test_copies_the_whole_design_not_just_the_shell(self, settings):
+        # visualizer.html is a shell that imports ./viz/*.js. Staging the html
+        # without the modules gives the job a page that renders nothing, and
+        # the failure only shows up minutes into a render.
+        manager, _ = make_manager(settings)
+        job = manager.create(default_params(), ("a.png", png()), ("a.wav", wav()))
+        assert (job.dir / "viz" / "main.js").exists()
+        assert (job.dir / "viz" / "signals.js").exists()
+        assert (job.dir / "viz" / "looks" / "burn.js").exists()
+
+    def test_a_job_keeps_its_own_copy_of_the_design(self, settings):
+        # editing a look on disk must not change what a queued job renders
+        manager, _ = make_manager(settings)
+        job = manager.create(default_params(), ("a.png", png()), ("a.wav", wav()))
+        (settings.pipeline_dir / "viz" / "main.js").write_text("// edited\n")
+        assert (job.dir / "viz" / "main.js").read_text() == "// stub\n"
+
+    def test_survives_a_pipeline_directory_with_no_viz(self, settings):
+        # the CLI can be used without the module tree; that should not stop a
+        # job being created, only produce a page that complains in the log
+        (settings.pipeline_dir / "viz" / "looks" / "burn.js").unlink()
+        (settings.pipeline_dir / "viz" / "signals.js").unlink()
+        (settings.pipeline_dir / "viz" / "main.js").unlink()
+        (settings.pipeline_dir / "viz" / "looks").rmdir()
+        (settings.pipeline_dir / "viz").rmdir()
+        manager, _ = make_manager(settings)
+        job = manager.create(default_params(), ("a.png", png()), ("a.wav", wav()))
+        assert (job.dir / "visualizer.html").exists()
+
     def test_remembers_the_original_upload_names(self, settings):
         manager, _ = make_manager(settings)
         job = manager.create(

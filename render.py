@@ -72,10 +72,51 @@ def should_report(kind: str, text: str, url: str) -> bool:
     return True
 
 
-def build_url(port: int, w: int, h: int, title: str, artist: str, artwork: str) -> str:
+def build_url(port: int, w: int, h: int, title: str, artist: str, artwork: str,
+              look: str = "burn") -> str:
     """Percent-encoded, because an ampersand in a track title is not a delimiter."""
-    query = urlencode({"w": w, "h": h, "title": title, "artist": artist, "art": artwork})
+    query = urlencode({"w": w, "h": h, "title": title, "artist": artist,
+                       "art": artwork, "look": look})
     return f"http://127.0.0.1:{port}/visualizer.html?{query}"
+
+
+
+#: Builds the grid inside the page rather than in Python, so the whole feature
+#: costs no new dependency: the frames are already canvases in there.
+SHEET_JS = """
+([picks, cols, tw, th, fps]) => {
+  const src = document.getElementById("c");
+  document.querySelectorAll("#mvg-sheet").forEach((n) => n.remove());
+  const sheet = document.createElement("canvas");
+  sheet.id = "mvg-sheet";
+  sheet.width = cols * tw;
+  sheet.height = Math.ceil(picks.length / cols) * th;
+  const x = sheet.getContext("2d");
+  x.fillStyle = "#000";
+  x.fillRect(0, 0, sheet.width, sheet.height);
+  picks.forEach((f, n) => {
+    window.renderFrame(f);
+    const cx = (n % cols) * tw;
+    const cy = Math.floor(n / cols) * th;
+    x.drawImage(src, cx, cy, tw, th);
+    const t = f / fps;
+    const label = Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0");
+    x.font = "12px monospace";
+    x.fillStyle = "rgba(0,0,0,0.65)";
+    x.fillRect(cx + 4, cy + 4, 54, 17);
+    x.fillStyle = "#8fe98f";
+    x.fillText(label, cx + 9, cy + 17);
+  });
+  // visualizer.html hides overflow so the render never scrolls; the sheet is
+  // wider than the viewport and would be clipped to black without this
+  document.documentElement.style.overflow = "visible";
+  document.body.style.overflow = "visible";
+  document.body.style.margin = "0";
+  sheet.style.display = "block";
+  document.body.appendChild(sheet);
+  return [sheet.width, sheet.height];
+}
+"""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,6 +135,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--artist", default="")
     ap.add_argument("--crf", type=int, default=16)
     ap.add_argument("--preset", default="slow")
+    ap.add_argument("--look", default="burn",
+                    help="which design to draw: see viz/looks/")
+    ap.add_argument("--contact-sheet", metavar="PNG",
+                    help="draw a grid of frames spread across the track and stop. "
+                         "Judging a look costs seconds instead of a test render, "
+                         "and needs no ffmpeg.")
+    ap.add_argument("--sheet-frames", type=int, default=12,
+                    help="how many frames the contact sheet shows (default 12)")
     ap.add_argument("--png", action="store_true",
                     help="lossless frame capture. ~6x slower: PNG encoding inside "
                          "Chromium is the single biggest cost in this pipeline, and "
@@ -133,7 +182,7 @@ def main() -> int:
     h = args.height or (720 if args.preview else 1080)
 
     port = serve(root)
-    url = build_url(port, w, h, args.title, args.artist, args.artwork)
+    url = build_url(port, w, h, args.title, args.artist, args.artwork, args.look)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--force-color-profile=srgb",
@@ -166,6 +215,23 @@ def main() -> int:
                   file=sys.stderr)
             return 2
 
+        if args.contact_sheet:
+            n = max(1, args.sheet_frames)
+            # evenly spaced and offset by half a step, so neither the first nor
+            # the last frame -- both often atypical -- stands for the track
+            picks = [min(end - 1, start + round((k + 0.5) * (end - start) / n))
+                     for k in range(n)]
+            cols = min(4, n)
+            w_, h_ = page.evaluate(SHEET_JS, [picks, cols, 480, round(480 * h / w), fps])
+            # grow the window to the sheet, or the part past the right edge of
+            # the render viewport is captured as black
+            page.set_viewport_size({"width": int(w_), "height": int(h_)})
+            page.locator("#mvg-sheet").screenshot(path=args.contact_sheet)
+            browser.close()
+            print(f"wrote {args.contact_sheet} ({w_}x{h_}, {n} frames, "
+                  f"look '{meta.get('look', args.look)}')")
+            return 0
+
         fmt = "png" if args.png else "jpeg"
         shot = ({"type": "png"} if args.png
                 else {"type": "jpeg", "quality": 100})
@@ -184,7 +250,8 @@ def main() -> int:
                 "-c:a", "aac", "-b:a", "320k",
                 "-shortest", "-movflags", "+faststart", args.out]
 
-        print(f"rendering frames {start}-{end} at {w}x{h}, {fps} fps, {fmt} capture")
+        print(f"rendering frames {start}-{end} at {w}x{h}, {fps} fps, "
+              f"{fmt} capture, look '{meta.get('look', args.look)}'")
         progress(args.progress, frame=start, start=start, end=end,
                  message=f"Rendering {end - start} frames at {w}x{h}")
         try:

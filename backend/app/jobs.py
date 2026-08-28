@@ -38,6 +38,8 @@ ANALYZE_SHARE = 0.25
 
 FRAMES_JSON = "frames.json"
 TEMPLATE_NAME = "visualizer.html"
+#: the module tree visualizer.html imports its design from
+VIZ_DIR = "viz"
 
 _BAD_FILENAME_CHARS = set('/\\:*?"<>|')
 
@@ -275,9 +277,12 @@ class JobManager:
         if not template.exists():
             raise ValidationError(f"{TEMPLATE_NAME} is missing from the pipeline directory")
         shutil.copy2(template, job_dir / TEMPLATE_NAME)
-        fonts = self.settings.pipeline_dir / "fonts"
-        if fonts.is_dir():
-            shutil.copytree(fonts, job_dir / "fonts", dirs_exist_ok=True)
+        # visualizer.html is only a shell; the looks it imports live here, and
+        # staging one without the other renders a blank frame for the whole job
+        for name in (VIZ_DIR, "fonts"):
+            src = self.settings.pipeline_dir / name
+            if src.is_dir():
+                shutil.copytree(src, job_dir / name, dirs_exist_ok=True)
 
     # -- execution ---------------------------------------------------------
     def submit(self, job_id: str) -> None:
@@ -344,6 +349,7 @@ class JobManager:
                         artist=p.artist,
                         crf=p.crf,
                         preset=p.preset,
+                        look=p.look,
                         preview=p.preview_range(),
                     ),
                 )

@@ -93,6 +93,7 @@ renders on the same CPU finish no sooner and each look stalled while they wait.
 
 ```
 analyze.py  render.py  visualizer.html    the pipeline, unchanged in spirit
+viz/        the design: signals, palette, assets, one file per look
 backend/    FastAPI: job directories, two subprocesses, progress
 frontend/   React + Vite
 ```
@@ -131,19 +132,24 @@ python analyze.py audio.wav --fps 60 --bands 24 -o frames.json
 python -m http.server 8000
 #    open http://localhost:8000/visualizer.html?preview=1&w=1280&h=720
 
-# 3. render a 15-second test at 720p
+# 3. judge a look in seconds: twelve frames across the track, one PNG.
+#    No ffmpeg needed, so this works on a machine that cannot render yet.
+python render.py --look orbit --contact-sheet sheet.png
+
+# 4. render a 15-second test at 720p
 python render.py --preview 30 45 --artist "BAND" --title "TRACK" -o test.mp4
 
-# 4. render the whole thing
-python render.py -w 1920 -H 1080 --artist "BAND" --title "TRACK" -o out.mp4
+# 5. render the whole thing
+python render.py -w 1920 -H 1080 --look burn --artist "BAND" --title "TRACK" -o out.mp4
 
-# 5. the same track as a phone cut — the layout refits itself to the frame
-python render.py -w 1080 -H 1920 --artist "BAND" --title "TRACK" -o vertical.mp4
+# 6. the same track as a phone cut — every look refits itself to the frame
+python render.py -w 1080 -H 1920 --look burn --artist "BAND" --title "TRACK" -o vertical.mp4
 ```
 
-`render.py` takes any even `-w`/`-H`; `visualizer.html` lays the cover out
-against whichever edge binds, so a portrait frame needs no other flag. The web
-UI drives exactly this, once per aspect, off one `frames.json`.
+`render.py` takes any even `-w`/`-H`; `viz/palette.js` lays the cover out against
+whichever edge binds and every look sizes its type off the short edge, so a
+portrait frame needs no other flag. The web UI drives exactly this, once per
+aspect, off one `frames.json`.
 
 ### Speed
 
@@ -170,23 +176,62 @@ not survive to the delivered file. Use `--fps 30` while iterating.
 ```js
 window.vizReady           // true once assets are decoded
 window.renderFrame(i)     // draws frame i synchronously
-window.meta               // { frames, fps }
+window.meta               // { frames, fps, look }
 ```
 
-Everything else is design and can be thrown away. Build the look in Claude
-Design from the artwork, export standalone HTML, then port the drawing into
-`renderFrame` under two rules:
+Everything else is design and can be thrown away — see **Looks** below for how
+`viz/` is laid out. Build a look in Claude Design from the artwork, export
+standalone HTML, then port the drawing into a `viz/looks/*.js` module under two
+rules:
 
 - **No `requestAnimationFrame` and no wall-clock time.** The frame index is the
   only clock. If the drawing consults `Date.now()` the render will not match
   the preview.
 - **No `Math.random()` in the draw path.** Seed noise once at load
-  (`mulberry32` is already in the file). Otherwise grain flickers between
-  frames in a way that looks like encoder noise and eats bitrate.
+  (`mulberry32` is in `viz/rng.js`). Otherwise grain flickers between frames in
+  a way that looks like encoder noise and eats bitrate.
+
+Both rules are why motion trails here are analytic rather than a feedback
+buffer: a look computes where a thing *was* at frame `i-k` and draws it there,
+so frame `i` never depends on frame `i-1`.
+
+## Looks
+
+`visualizer.html` is a shell. The design lives in `viz/`, and `?look=<id>`
+picks one — `render.py --look`, or the picker in the web UI.
+
+| id | what it does |
+|---|---|
+| `burn` | the signature. Ten luminance thresholds of the cover ignite from its own highlights on every kick. The ember drifts with the harmony, the composition reseats itself each section, and the channel split fires on discrete onsets. |
+| `orbit` | the record spins. The cover becomes a disc, the spectrum wraps its rim, and the twelve chroma classes sit outside as spokes in circle-of-fifths order. Rotation is locked to the beat grid, so it turns at the track's tempo. |
+| `shear` | the artwork tears along the spectrum. Forty-four horizontal slices, each displaced by its own frequency band; onsets rip it wide and it walks back together over the frames that follow. |
+
+Adding one is a file in `viz/looks/` and a line in `viz/looks/index.js`. A look
+is `{ id, name, draw(ctx, sig, assets), init?(assets) }`, where `sig` is
+everything in the table below for the current frame. A backend test asserts
+every id the server accepts has a module registered, so the two cannot drift.
+
+```
+viz/main.js      the contract render.py drives, and the wiring
+viz/signals.js   frame i -> what the music is doing; pure, unit-tested
+viz/palette.js   the record's own colours, and where it sits in the frame
+viz/assets.js    burn masks, grain, vignette — everything expensive, built once
+```
+
+Motion trails are analytic rather than a feedback buffer. Orbit computes where
+the disc was at frame *i-k* and draws it there, so nothing carries state from
+one frame to the next and `--preview 90 105` produces exactly the frames a full
+render would.
+
+That is enforced, not just intended: `tests/test_determinism.py` drives the real
+page and checks that walking the track in order gives byte-identical frames to
+jumping straight to them, for every look. It fails if you introduce a variable
+that survives a frame. `node --test "viz/**/*.test.js"` covers the pure maths
+and needs no dependencies at all.
 
 ## What drives what
 
-`frames.json` gives you six signals per frame, all 0–1:
+`frames.json` is `"version": 2`. Per frame, all 0–1:
 
 | key | source | feel |
 |---|---|---|
@@ -196,11 +241,32 @@ Design from the artwork, export standalone HTML, then port the drawing into
 | `hit` | onset strength, percussive | transient spikes |
 | `rms` | full mix | overall loudness |
 | `spectrum` | 24 log bands, dB-scaled | shape |
+| `beatPhase` | beat grid | 0→1 between beats; the pulse |
+| `barPhase` | beat grid + meter | 0→1 across a bar |
+| `sectionPhase` | segmentation | 0→1 through this part of the song |
+| `hue`, `tonal` | chroma on the circle of fifths | harmony as an angle, and how much to trust it |
+| `bright` | spectral centroid, log-scaled | dark verse vs. open chorus |
+| `drive` | percussive / total energy | blast section vs. clean passage |
+| `arc` | `rms` over ~8 s | the track's long dynamic shape |
+
+And whole-track data, as frame indices: `beats`, `downbeats`, `onsets`,
+`sections`, plus `sectionIndex` per frame, the raw 12×T `chroma`, `tempo` and
+`meter`. `onsets` are discrete events, so a look can run a one-shot on its own
+timeline instead of thresholding a continuous envelope.
 
 The harmonic/percussive split is what makes this usable on death metal.
 A plain FFT band at 80 Hz sees the kick *and* the down-tuned guitar
 fundamental, so on a fast track everything moves at once and reads as mush.
 Splitting first means `kick` follows the drums and `wall` follows the riff.
+
+Two signals exist to be *distrusted*. `tonal` says how tonal the frame actually
+is — a dense atonal wall lands near zero, and a look should weight `hue` by it
+rather than swinging the palette on noise. And beat tracking is only as good as
+the material: everything driven by `beatPhase` should degrade to "slightly off
+pulse", never to broken.
+
+Because `hop_length = sr/fps`, every frame index in this file — beats, onsets,
+section starts — is already a video frame number. Nothing converts.
 
 ## Tuning
 

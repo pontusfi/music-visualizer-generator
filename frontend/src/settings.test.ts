@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyPreset,
   ASPECTS,
+  LOOKS,
   DEFAULT_SETTINGS,
   dimensions,
   matchPreset,
@@ -250,5 +251,35 @@ describe("output presets", () => {
       expect(preset.name.length).toBeGreaterThan(0);
       expect(preset.spec.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("looks", () => {
+  it("offers the three the pipeline registers", () => {
+    expect(LOOKS.map((l) => l.id)).toEqual(["burn", "orbit", "shear"]);
+  });
+
+  it("names and describes each one for the picker", () => {
+    for (const look of LOOKS) {
+      expect(look.name.length).toBeGreaterThan(0);
+      expect(look.note.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("opens on the signature look", () => {
+    expect(DEFAULT_SETTINGS.look).toBe("burn");
+  });
+
+  it("sends the look with the job", () => {
+    const form = toFormData({ ...DEFAULT_SETTINGS, look: "orbit" }, image, audio);
+    expect(form.get("look")).toBe("orbit");
+  });
+
+  it("keeps the look out of the output presets", () => {
+    // resolution and quality are what a preset speaks for; which design gets
+    // drawn is an orthogonal choice and must survive picking one
+    const preset = OUTPUT_PRESETS[2];
+    expect(applyPreset({ ...DEFAULT_SETTINGS, look: "shear" }, preset).look).toBe("shear");
+    expect(matchPreset({ ...DEFAULT_SETTINGS, look: "shear" })).toBe("deliver");
   });
 });

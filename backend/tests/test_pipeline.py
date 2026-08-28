@@ -164,3 +164,44 @@ class TestProcessRunner:
         )
         assert handles, "runner must publish the process handle"
         assert code != 0
+
+
+class TestLookParameter:
+    """The look is chosen in the UI and has to survive the whole way to the
+    query string visualizer.html reads."""
+
+    def test_render_command_passes_the_look_through(self, tmp_path):
+        cmd = pipeline.render_command(
+            python_bin="python",
+            script=tmp_path / "render.py",
+            root=tmp_path,
+            artwork="artwork.png",
+            audio=tmp_path / "audio.wav",
+            out=tmp_path / "out.mp4",
+            width=1920,
+            height=1080,
+            title="",
+            artist="",
+            crf=16,
+            preset="slow",
+            look="orbit",
+        )
+        assert "--look" in cmd
+        assert cmd[cmd.index("--look") + 1] == "orbit"
+
+    def test_render_command_still_works_without_one(self, tmp_path):
+        cmd = pipeline.render_command(
+            python_bin="python",
+            script=tmp_path / "render.py",
+            root=tmp_path,
+            artwork="artwork.png",
+            audio=tmp_path / "audio.wav",
+            out=tmp_path / "out.mp4",
+            width=1920,
+            height=1080,
+            title="",
+            artist="",
+            crf=16,
+            preset="slow",
+        )
+        assert "--look" not in cmd
