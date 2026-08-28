@@ -31,6 +31,13 @@ Preset = Literal[
 ]
 
 
+#: the looks viz/looks/index.js registers. Kept here as well so a typo is a
+#: 422 at upload time rather than a blank video forty minutes later.
+LOOKS = ("burn", "orbit", "shear")
+
+Look = Literal["burn", "orbit", "shear"]
+
+
 class JobParams(BaseModel):
     """Everything the two pipeline stages need, other than the files."""
 
@@ -44,6 +51,7 @@ class JobParams(BaseModel):
     artist: str = Field(default="", max_length=120)
     crf: int = Field(default=16, ge=0, le=51)
     preset: Preset = "slow"
+    look: Look = "burn"
     bands: int = Field(default=24, ge=4, le=64)
     hpss: bool = True
     preview_start: float | None = Field(default=None, ge=0)

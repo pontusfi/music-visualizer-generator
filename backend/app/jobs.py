@@ -301,6 +301,7 @@ class JobManager:
                     artist=p.artist,
                     crf=p.crf,
                     preset=p.preset,
+                    look=p.look,
                     preview=p.preview_range(),
                 ),
             )

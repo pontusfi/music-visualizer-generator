@@ -580,6 +580,133 @@ body {
   transform: rotate(225deg);
 }
 
+/* ── look picker ──────────────────────────────────────────────────────── */
+.looks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.look {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.look:hover:not(:disabled) {
+  border-color: var(--line2);
+}
+
+.look--on {
+  border-color: var(--acc);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.look:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.look__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.look__name {
+  display: block;
+  font: 700 15px/1.1 var(--cond);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.look__note {
+  display: block;
+  font: 400 11.5px/1.4 var(--sans);
+  color: var(--faint);
+  margin-top: 2px;
+}
+
+/* a small mark per look, so the list reads at a glance */
+.look__glyph {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  position: relative;
+  border: 1px solid #2a2a30;
+  opacity: 0.75;
+}
+
+.look--on .look__glyph {
+  border-color: var(--acc);
+  opacity: 1;
+}
+
+/* burn: a square with a lit core */
+.look__glyph--burn::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  background: #2a2a30;
+}
+
+.look--on .look__glyph--burn::after {
+  background: var(--acc);
+  box-shadow: 0 0 6px var(--acc);
+}
+
+/* orbit: a ring */
+.look__glyph--orbit {
+  border-radius: 99px;
+}
+
+.look__glyph--orbit::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 99px;
+  background: #2a2a30;
+}
+
+.look--on .look__glyph--orbit::after {
+  background: var(--acc);
+}
+
+/* shear: offset bands */
+.look__glyph--shear::before,
+.look__glyph--shear::after {
+  content: "";
+  position: absolute;
+  height: 4px;
+  background: #2a2a30;
+}
+
+.look__glyph--shear::before {
+  left: 2px;
+  right: 8px;
+  top: 5px;
+}
+
+.look__glyph--shear::after {
+  left: 8px;
+  right: 2px;
+  top: 12px;
+}
+
+.look--on .look__glyph--shear::before,
+.look--on .look__glyph--shear::after {
+  background: var(--acc);
+}
+
 /* ── advanced ─────────────────────────────────────────────────────────── */
 .grid {
   display: grid;

@@ -176,3 +176,46 @@ class TestConsoleFilter:
 
     def test_ignores_ordinary_console_chatter(self, render):
         assert not render.should_report("log", "hello", "http://x/visualizer.html")
+
+
+class TestLookContract:
+    """A look id travels UI -> schemas -> pipeline -> render.py -> query string.
+    Every hop is a place it can be dropped or misspelled."""
+
+    def test_render_accepts_the_look_the_server_sends(self, render, tmp_path):
+        from app.schemas import LOOKS
+
+        for look in LOOKS:
+            cmd = pipeline.render_command(
+                python_bin="python",
+                script=tmp_path / "render.py",
+                root=tmp_path,
+                artwork="artwork.png",
+                audio=tmp_path / "audio.wav",
+                out=tmp_path / "out.mp4",
+                width=1920,
+                height=1080,
+                title="",
+                artist="",
+                crf=16,
+                preset="slow",
+                look=look,
+            )
+            args = render.build_parser().parse_args(cmd[2:])
+            assert args.look == look
+
+    def test_the_look_reaches_the_query_string(self, render):
+        url = render.build_url(9000, 1920, 1080, "T", "A", "artwork.png", "orbit")
+        assert "look=orbit" in url
+
+    def test_every_schema_look_has_a_module(self):
+        from app.schemas import LOOKS
+
+        registry = (REPO_ROOT / "viz" / "looks" / "index.js").read_text(encoding="utf-8")
+        for look in LOOKS:
+            assert (REPO_ROOT / "viz" / "looks" / f"{look}.js").exists(), look
+            # and is actually registered, not just present on disk
+            assert f'from "./{look}.js"' in registry, look
+
+    def test_render_defaults_to_the_signature_look(self, render):
+        assert render.build_parser().parse_args([]).look == "burn"

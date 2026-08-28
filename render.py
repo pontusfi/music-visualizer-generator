@@ -72,9 +72,11 @@ def should_report(kind: str, text: str, url: str) -> bool:
     return True
 
 
-def build_url(port: int, w: int, h: int, title: str, artist: str, artwork: str) -> str:
+def build_url(port: int, w: int, h: int, title: str, artist: str, artwork: str,
+              look: str = "burn") -> str:
     """Percent-encoded, because an ampersand in a track title is not a delimiter."""
-    query = urlencode({"w": w, "h": h, "title": title, "artist": artist, "art": artwork})
+    query = urlencode({"w": w, "h": h, "title": title, "artist": artist,
+                       "art": artwork, "look": look})
     return f"http://127.0.0.1:{port}/visualizer.html?{query}"
 
 
@@ -94,6 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--artist", default="")
     ap.add_argument("--crf", type=int, default=16)
     ap.add_argument("--preset", default="slow")
+    ap.add_argument("--look", default="burn",
+                    help="which design to draw: see viz/looks/")
     ap.add_argument("--png", action="store_true",
                     help="lossless frame capture. ~6x slower: PNG encoding inside "
                          "Chromium is the single biggest cost in this pipeline, and "
@@ -133,7 +137,7 @@ def main() -> int:
     h = args.height or (720 if args.preview else 1080)
 
     port = serve(root)
-    url = build_url(port, w, h, args.title, args.artist, args.artwork)
+    url = build_url(port, w, h, args.title, args.artist, args.artwork, args.look)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--force-color-profile=srgb",
@@ -184,7 +188,8 @@ def main() -> int:
                 "-c:a", "aac", "-b:a", "320k",
                 "-shortest", "-movflags", "+faststart", args.out]
 
-        print(f"rendering frames {start}-{end} at {w}x{h}, {fps} fps, {fmt} capture")
+        print(f"rendering frames {start}-{end} at {w}x{h}, {fps} fps, "
+              f"{fmt} capture, look '{meta.get('look', args.look)}'")
         progress(args.progress, frame=start, start=start, end=end,
                  message=f"Rendering {end - start} frames at {w}x{h}")
         try:

@@ -7,9 +7,13 @@
  */
 
 import * as burn from "./burn.js";
+import * as orbit from "./orbit.js";
+import * as shear from "./shear.js";
 
 export const LOOKS = {
   [burn.id]: burn,
+  [orbit.id]: orbit,
+  [shear.id]: shear,
 };
 
 export const DEFAULT_LOOK = burn.id;

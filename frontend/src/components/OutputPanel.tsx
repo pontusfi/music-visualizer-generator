@@ -31,7 +31,7 @@ export function OutputPanel({
   return (
     <section className="rail__block">
       <div className="rail__head">
-        <h2 className="rail__title">03 · Output</h2>
+        <h2 className="rail__title">04 · Output</h2>
         <span className="rail__status">{chosen ? chosen.name : "Custom"}</span>
       </div>
 

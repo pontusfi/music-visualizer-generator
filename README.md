@@ -80,6 +80,7 @@ renders on the same CPU finish no sooner and each look stalled while they wait.
 
 ```
 analyze.py  render.py  visualizer.html    the pipeline, unchanged in spirit
+viz/        the design: signals, palette, assets, one file per look
 backend/    FastAPI: job directories, two subprocesses, progress
 frontend/   React + Vite
 ```
@@ -146,19 +147,53 @@ not survive to the delivered file. Use `--fps 30` while iterating.
 ```js
 window.vizReady           // true once assets are decoded
 window.renderFrame(i)     // draws frame i synchronously
-window.meta               // { frames, fps }
+window.meta               // { frames, fps, look }
 ```
 
-Everything else is design and can be thrown away. Build the look in Claude
-Design from the artwork, export standalone HTML, then port the drawing into
-`renderFrame` under two rules:
+Everything else is design and can be thrown away — see **Looks** below for how
+`viz/` is laid out. Build a look in Claude Design from the artwork, export
+standalone HTML, then port the drawing into a `viz/looks/*.js` module under two
+rules:
 
 - **No `requestAnimationFrame` and no wall-clock time.** The frame index is the
   only clock. If the drawing consults `Date.now()` the render will not match
   the preview.
 - **No `Math.random()` in the draw path.** Seed noise once at load
-  (`mulberry32` is already in the file). Otherwise grain flickers between
-  frames in a way that looks like encoder noise and eats bitrate.
+  (`mulberry32` is in `viz/rng.js`). Otherwise grain flickers between frames in
+  a way that looks like encoder noise and eats bitrate.
+
+Both rules are why motion trails here are analytic rather than a feedback
+buffer: a look computes where a thing *was* at frame `i-k` and draws it there,
+so frame `i` never depends on frame `i-1`.
+
+## Looks
+
+`visualizer.html` is a shell. The design lives in `viz/`, and `?look=<id>`
+picks one — `render.py --look`, or the picker in the web UI.
+
+| id | what it does |
+|---|---|
+| `burn` | the signature. Ten luminance thresholds of the cover ignite from its own highlights on every kick. The ember drifts with the harmony, the composition reseats itself each section, and the channel split fires on discrete onsets. |
+| `orbit` | the record spins. The cover becomes a disc, the spectrum wraps its rim, and the twelve chroma classes sit outside as spokes in circle-of-fifths order. Rotation is locked to the beat grid, so it turns at the track's tempo. |
+| `shear` | the artwork tears along the spectrum. Forty-four horizontal slices, each displaced by its own frequency band; onsets rip it wide and it walks back together over the frames that follow. |
+
+Adding one is a file in `viz/looks/` and a line in `viz/looks/index.js`. A look
+is `{ id, name, draw(ctx, sig, assets), init?(assets) }`, where `sig` is
+everything in the table below for the current frame. A backend test asserts
+every id the server accepts has a module registered, so the two cannot drift.
+
+```
+viz/main.js      the contract render.py drives, and the wiring
+viz/signals.js   frame i -> what the music is doing; pure, unit-tested
+viz/palette.js   the record's own colours, and where it sits in the frame
+viz/assets.js    burn masks, grain, vignette — everything expensive, built once
+```
+
+Motion trails are analytic rather than a feedback buffer. Orbit computes where
+the disc was at frame *i-k* and draws it there, so nothing carries state from
+one frame to the next and `--preview 90 105` produces exactly the frames a full
+render would. `node --test "viz/**/*.test.js"` covers the parts that are pure
+maths; it needs no dependencies.
 
 ## What drives what
 

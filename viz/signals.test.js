@@ -156,6 +156,33 @@ describe("Signals", () => {
     assert.ok(sig.at(5).beatPulse > 0);
   });
 
+  it("numbers the beats, so a rotation can lock to the pulse", () => {
+    const sig = new Signals(frames());   // beats at 0 and 4
+    assert.equal(sig.at(0).beatOrdinal, 0);
+    assert.equal(sig.at(3).beatOrdinal, 0);
+    assert.equal(sig.at(4).beatOrdinal, 1);
+    assert.equal(sig.at(7).beatOrdinal, 1);
+  });
+
+  it("counts back before the first beat so the count never jumps", () => {
+    // ordinal + beatPhase has to rise smoothly or anything driven by it
+    // stutters on the first bar
+    const sig = new Signals(frames({ beats: [4] }));
+    assert.equal(sig.at(0).beatOrdinal, -1);
+    assert.equal(sig.at(4).beatOrdinal, 0);
+  });
+
+  it("keeps ordinal plus phase rising across the whole track", () => {
+    const sig = new Signals(frames({ frames: 40, beats: [3, 13, 23, 33] }));
+    let last = -Infinity;
+    for (let i = 0; i < 40; i += 1) {
+      const s = sig.at(i);
+      const turn = s.beatOrdinal + s.beatPhase;
+      assert.ok(turn >= last - 1e-9, `frame ${i}: ${turn} after ${last}`);
+      last = turn;
+    }
+  });
+
   it("hands over the twelve chroma values for the frame", () => {
     const c = new Signals(frames()).at(2).chroma;
     assert.equal(c.length, 12);

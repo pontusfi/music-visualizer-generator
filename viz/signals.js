@@ -42,6 +42,36 @@ export function sincePrev(events, T, none = NONE) {
   return out;
 }
 
+/**
+ * How many events have happened at or before each frame, zero-based.
+ *
+ * -1 before the first one, so that `ordinal + phase` keeps rising smoothly
+ * through it: analyze.py extrapolates the phase backwards at the opening
+ * tempo, and anything driven by a rotation would otherwise stutter on the
+ * first bar.
+ */
+export function ordinalOf(events, T) {
+  const n = Math.max(0, T | 0);
+  const out = new Float64Array(n);
+  if (n === 0) return out;
+  out.fill(-1);
+  const sorted = [...(events ?? [])]
+    .map((v) => v | 0)
+    .filter((v) => v >= 0 && v < n)
+    .sort((a, b) => a - b);
+
+  let seen = -1;
+  let next = 0;
+  for (let i = 0; i < n; i += 1) {
+    while (next < sorted.length && sorted[next] === i) {
+      seen += 1;
+      next += 1;
+    }
+    out[i] = seen;
+  }
+  return out;
+}
+
 /** 1 at the event, falling linearly to 0 `length` frames later. */
 export function decay(since, length) {
   if (!(length > 0)) return 0;
@@ -78,6 +108,7 @@ export class Signals {
     this.onsets = data.onsets ?? [];
     this.sections = data.sections ?? [];
 
+    this._beatOrdinal = ordinalOf(this.beats, this.frames);
     this._sinceBeat = sincePrev(this.beats, this.frames);
     this._sinceDownbeat = sincePrev(this.downbeats, this.frames);
     this._sinceOnset = sincePrev(this.onsets, this.frames);
@@ -129,6 +160,7 @@ export class Signals {
       section: this._track("sectionIndex")[n] | 0,
       chroma,
       // discrete events, as ages — the basis of every one-shot
+      beatOrdinal: this._beatOrdinal[n] ?? -1,
       sinceBeat,
       sinceDownbeat,
       sinceOnset,
