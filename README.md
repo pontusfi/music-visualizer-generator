@@ -119,11 +119,15 @@ python analyze.py audio.wav --fps 60 --bands 24 -o frames.json
 python -m http.server 8000
 #    open http://localhost:8000/visualizer.html?preview=1&w=1280&h=720
 
-# 3. render a 15-second test at 720p
+# 3. judge a look in seconds: twelve frames across the track, one PNG.
+#    No ffmpeg needed, so this works on a machine that cannot render yet.
+python render.py --look orbit --contact-sheet sheet.png
+
+# 4. render a 15-second test at 720p
 python render.py --preview 30 45 --artist "BAND" --title "TRACK" -o test.mp4
 
-# 4. render the whole thing
-python render.py -w 1920 -H 1080 --artist "BAND" --title "TRACK" -o out.mp4
+# 5. render the whole thing
+python render.py -w 1920 -H 1080 --look burn --artist "BAND" --title "TRACK" -o out.mp4
 ```
 
 ### Speed
@@ -192,8 +196,13 @@ viz/assets.js    burn masks, grain, vignette — everything expensive, built onc
 Motion trails are analytic rather than a feedback buffer. Orbit computes where
 the disc was at frame *i-k* and draws it there, so nothing carries state from
 one frame to the next and `--preview 90 105` produces exactly the frames a full
-render would. `node --test "viz/**/*.test.js"` covers the parts that are pure
-maths; it needs no dependencies.
+render would.
+
+That is enforced, not just intended: `tests/test_determinism.py` drives the real
+page and checks that walking the track in order gives byte-identical frames to
+jumping straight to them, for every look. It fails if you introduce a variable
+that survives a frame. `node --test "viz/**/*.test.js"` covers the pure maths
+and needs no dependencies at all.
 
 ## What drives what
 
