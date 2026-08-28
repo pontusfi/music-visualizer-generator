@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_SETTINGS, toFormData } from "./settings";
+import {
+  applyPreset,
+  DEFAULT_SETTINGS,
+  matchPreset,
+  OUTPUT_PRESETS,
+  toFormData,
+} from "./settings";
 
 const image = new File([new Uint8Array([1, 2, 3])], "cover.png", { type: "image/png" });
 const audio = new File([new Uint8Array([4, 5, 6])], "track.wav", { type: "audio/wav" });
@@ -64,5 +70,76 @@ describe("defaults", () => {
     expect(DEFAULT_SETTINGS.height).toBe(1080);
     expect(DEFAULT_SETTINGS.fps).toBe(60);
     expect(DEFAULT_SETTINGS.hpss).toBe(true);
+  });
+});
+
+describe("output presets", () => {
+  const byId = (id: string) => {
+    const preset = OUTPUT_PRESETS.find((p) => p.id === id);
+    if (!preset) throw new Error(`no preset ${id}`);
+    return preset;
+  };
+
+  it("offers a test window, a delivery and a master", () => {
+    expect(OUTPUT_PRESETS.map((p) => p.id)).toEqual(["test", "deliver", "master"]);
+  });
+
+  it("opens on Delivery, so the defaults are a named preset and not 'custom'", () => {
+    expect(matchPreset(DEFAULT_SETTINGS)).toBe("deliver");
+  });
+
+  it("carries every field the preset names onto the settings", () => {
+    const next = applyPreset(DEFAULT_SETTINGS, byId("master"));
+    expect(next.width).toBe(3840);
+    expect(next.height).toBe(2160);
+    expect(next.fps).toBe(60);
+    expect(next.crf).toBe(14);
+    expect(next.preset).toBe("slower");
+  });
+
+  it("leaves the credit line and the analysis settings alone", () => {
+    const start = { ...DEFAULT_SETTINGS, artist: "OLD NIGHT", title: "Ashes", bands: 40 };
+    const next = applyPreset(start, byId("master"));
+    expect(next.artist).toBe("OLD NIGHT");
+    expect(next.title).toBe("Ashes");
+    expect(next.bands).toBe(40);
+    expect(next.hpss).toBe(true);
+  });
+
+  it("switches the test window on for the test preset and off for the others", () => {
+    expect(applyPreset(DEFAULT_SETTINGS, byId("test")).previewEnabled).toBe(true);
+    expect(applyPreset(DEFAULT_SETTINGS, byId("deliver")).previewEnabled).toBe(false);
+  });
+
+  it("keeps the window the user chose when switching to the test preset", () => {
+    const start = { ...DEFAULT_SETTINGS, previewStart: 120, previewEnd: 140 };
+    const next = applyPreset(start, byId("test"));
+    expect(next.previewStart).toBe(120);
+    expect(next.previewEnd).toBe(140);
+  });
+
+  it("recognises its own output, so the button lights up after a click", () => {
+    for (const preset of OUTPUT_PRESETS) {
+      expect(matchPreset(applyPreset(DEFAULT_SETTINGS, preset))).toBe(preset.id);
+    }
+  });
+
+  it("goes custom the moment a single field diverges", () => {
+    expect(matchPreset({ ...DEFAULT_SETTINGS, crf: 23 })).toBeNull();
+    expect(matchPreset({ ...DEFAULT_SETTINGS, fps: 30 })).toBeNull();
+    expect(matchPreset({ ...DEFAULT_SETTINGS, preset: "veryfast" })).toBeNull();
+    expect(matchPreset({ ...DEFAULT_SETTINGS, height: 720, width: 1280 })).toBeNull();
+  });
+
+  it("does not confuse the test preset with a 720p render of the whole track", () => {
+    const full = applyPreset(DEFAULT_SETTINGS, byId("test"));
+    expect(matchPreset({ ...full, previewEnabled: false })).toBeNull();
+  });
+
+  it("names every preset with a spec line the panel can print", () => {
+    for (const preset of OUTPUT_PRESETS) {
+      expect(preset.name.length).toBeGreaterThan(0);
+      expect(preset.spec.length).toBeGreaterThan(0);
+    }
   });
 });

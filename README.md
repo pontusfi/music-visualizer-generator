@@ -37,10 +37,29 @@ settles. There is no database and no account.
 
 ### What the UI exposes
 
-Resolution, frame rate, quality, the credit line, and the two analysis
-settings worth touching from outside — band count and the harmonic/percussive
-split. The 15-second test render is the same `--preview` window the CLI takes,
-which is still the right way to judge the look before committing an hour.
+A left rail carries the job — source files, the burn-in credit line, and the
+output preset — and the rest of the window is a stage showing what you are
+about to render.
+
+Three presets cover the usual answers: **Test window**, **Delivery** (1080p60,
+crf 16), and **Master** (2160p60, crf 14). Each quotes an estimate once the
+track's length is known. Behind *Advanced* sit resolution, frame rate, x264
+preset, quality, the two analysis settings worth touching from outside — band
+count and the harmonic/percussive split — and the test window's own bounds.
+That window is the same `--preview` range the CLI takes, and it is still the
+right way to judge the look before committing an hour.
+
+The stage plays the master locally through a WebAudio analyser and draws an
+impression of the render from the cover, its highlights, and the live spectrum,
+with the five levels the renderer keys off (kick, crack, wall, hit, rms) metered
+underneath. It is a monitor, not a simulation: the mp4 is drawn from the frame
+table `analyze.py` writes, and nothing in the preview feeds into it. The shell
+also takes its accent colour from the artwork, by binning the saturated pixels
+by hue and keeping the heaviest bin.
+
+Once a job starts, the footer becomes the progress read-out and a console opens
+under the stage with the log tail. When the render lands, the stage shows the
+finished mp4 in place of the preview.
 
 ### API
 

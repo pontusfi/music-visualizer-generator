@@ -40,3 +40,20 @@ export function probeDuration(
     probe.src = url;
   });
 }
+
+/** Merge two answers about how long a track is.
+ *
+ * Two sources race: the metadata probe above, and the waveform decode. Either
+ * can come back empty, and the probe's five-second timeout usually lands last
+ * — so a plain assignment lets a null wipe out a length already found. First
+ * real answer wins, and nothing later takes it away.
+ */
+export function bestDuration(
+  current: number | null,
+  candidate: number | null | undefined,
+): number | null {
+  const usable = (v: number | null | undefined): v is number =>
+    typeof v === "number" && Number.isFinite(v) && v > 0;
+  if (usable(current)) return current;
+  return usable(candidate) ? candidate : null;
+}

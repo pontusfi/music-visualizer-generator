@@ -87,3 +87,29 @@ const LABELS: Record<JobState, string> = {
 export function stateLabel(state: JobState): string {
   return LABELS[state] ?? state;
 }
+
+export type LogTone = "step" | "bad" | "plain";
+
+/** Words that only ever appear when something has gone wrong. */
+const BAD = /\b(error|errors|failed|failure|fatal|traceback|exception|cannot|unexpectedly)\b/i;
+/** Python names its exceptions NoBackendError, LibsndfileError, RuntimeError —
+ *  no word boundary in front of "Error", so the word list above walks past them. */
+const BAD_EXCEPTION = /[A-Za-z]Error\b/;
+/** The lines that open a stage: the commands, and the mux at the end. */
+const STEP = /(^|\s)(analyze\.py|render\.py|ffmpeg|chromium)\b/;
+
+/** How a console line should read. The log is the only window into a render
+ *  that has gone quiet, so the two lines that matter are worth finding fast. */
+export function logTone(line: string): LogTone {
+  if (BAD.test(line) || BAD_EXCEPTION.test(line)) return "bad";
+  if (STEP.test(line)) return "step";
+  return "plain";
+}
+
+/** A duration in minutes, said the way a person would say it. */
+export function formatApprox(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes) || minutes < 0) return "";
+  if (minutes <= 1) return "a minute";
+  if (minutes < 90) return `${Math.round(minutes)} minutes`;
+  return `${(minutes / 60).toFixed(1)} hours`;
+}

@@ -68,3 +68,85 @@ export function toFormData(
   }
   return form;
 }
+
+export interface OutputPreset {
+  id: string;
+  name: string;
+  /** The one-line spec printed under the name. */
+  spec: string;
+  width: number;
+  height: number;
+  fps: number;
+  crf: number;
+  preset: string;
+  previewEnabled: boolean;
+}
+
+/** The three renders anyone actually asks for. Everything else is Advanced. */
+export const OUTPUT_PRESETS: OutputPreset[] = [
+  {
+    id: "test",
+    name: "Test window",
+    spec: "720p · 60 · short window",
+    width: 1280,
+    height: 720,
+    fps: 60,
+    crf: 20,
+    preset: "slow",
+    previewEnabled: true,
+  },
+  {
+    id: "deliver",
+    name: "Delivery",
+    spec: "1080p · 60 · crf 16 · slow",
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    crf: 16,
+    preset: "slow",
+    previewEnabled: false,
+  },
+  {
+    id: "master",
+    name: "Master",
+    spec: "2160p · 60 · crf 14 · slower",
+    width: 3840,
+    height: 2160,
+    fps: 60,
+    crf: 14,
+    preset: "slower",
+    previewEnabled: false,
+  },
+];
+
+/** The fields a preset speaks for. Anything outside this list — the credit
+ *  line, the analysis settings, where the test window sits — is the user's,
+ *  and a preset must not reach in and reset it. */
+const PRESET_FIELDS = [
+  "width",
+  "height",
+  "fps",
+  "crf",
+  "preset",
+  "previewEnabled",
+] as const;
+
+export function applyPreset(
+  settings: RenderSettings,
+  preset: OutputPreset,
+): RenderSettings {
+  const next = { ...settings };
+  for (const field of PRESET_FIELDS) {
+    // each key is assigned from the matching key, so the types line up
+    (next[field] as RenderSettings[typeof field]) = preset[field];
+  }
+  return next;
+}
+
+/** Which preset these settings are, or null for a custom render. */
+export function matchPreset(settings: RenderSettings): string | null {
+  const hit = OUTPUT_PRESETS.find((preset) =>
+    PRESET_FIELDS.every((field) => settings[field] === preset[field]),
+  );
+  return hit ? hit.id : null;
+}
