@@ -138,7 +138,7 @@ async function init() {
   // A display font that arrived on frame 3 would leave frames 0-2 as the only
   // ones in the fallback face, so wait for it before declaring readiness.
   try {
-    await document.fonts.load(`${Math.round(H * 0.0135)}px Display`);
+    await document.fonts.load(`${Math.round(layout.unit * 0.0135)}px Display`);
     await document.fonts.ready;
   } catch {
     /* no display font: the fallback stack is the design */

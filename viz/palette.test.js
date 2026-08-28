@@ -145,3 +145,62 @@ describe("shiftHue", () => {
     }
   });
 });
+
+describe("layoutFor in a frame that is not 16:9", () => {
+  /** Every tier, as the short edge, both ways round. */
+  const FRAMES = [720, 1080, 1440, 2160].flatMap((short) => {
+    const long = Math.round((short * 16) / 9);
+    return [
+      [long, short],
+      [short, long],
+    ];
+  });
+
+  it("takes its size unit from the short edge, not the height", () => {
+    // in a 9:16 frame the height is the LONG edge, and type scaled to it comes
+    // out nearly twice too big
+    assert.equal(layoutFor(1000, 1000, 1920, 1080).unit, 1080);
+    assert.equal(layoutFor(1000, 1000, 1080, 1920).unit, 1080);
+  });
+
+  it("keeps a square cover inside a 9:16 frame", () => {
+    const l = layoutFor(1000, 1000, 1080, 1920);
+    assert.ok(l.x >= 0, `x was ${l.x}`);
+    assert.ok(l.x + l.w <= 1080, `right edge was ${l.x + l.w}`);
+  });
+
+  it("centres the block in a tall frame rather than leaving it at the top", () => {
+    // at 62% of 1920 the cover cannot fit the width, so it binds on width
+    // instead — and a fixed 10% top would then leave a third of the frame
+    // empty underneath the spectrum
+    const l = layoutFor(1000, 1000, 1080, 1920);
+    const above = l.y;
+    const below = 1920 - (l.y + l.h + l.barCap);
+    assert.ok(Math.abs(above - below) < 1920 * 0.06, `${above} above, ${below} below`);
+  });
+
+  it("leaves the bars uncapped when the height binds, as on any ordinary 16:9 render", () => {
+    // the cap has to be inert at 16:9, or it would change the look that exists
+    assert.equal(layoutFor(1000, 1000, 1920, 1080).barCap, Infinity);
+    assert.equal(layoutFor(1400, 1000, 1920, 1080).barCap, Infinity);
+  });
+
+  it("caps the bars to a share of the cover when the width binds", () => {
+    const l = layoutFor(1000, 1000, 1080, 1920);
+    assert.ok(Number.isFinite(l.barCap));
+    assert.ok(l.barCap > 0 && l.barCap <= l.h * 0.5, `barCap was ${l.barCap}`);
+  });
+
+  it("never puts the cover outside the frame, at any tier or aspect", () => {
+    for (const [W, H] of FRAMES) {
+      for (const [aw, ah] of [[1000, 1000], [1400, 1000], [1000, 1400], [3000, 1000]]) {
+        const l = layoutFor(aw, ah, W, H);
+        const where = `${aw}x${ah} in ${W}x${H}`;
+        assert.ok(l.x >= 0, `x ${l.x} at ${where}`);
+        assert.ok(l.x + l.w <= W, `right ${l.x + l.w} at ${where}`);
+        assert.ok(l.y >= 0, `y ${l.y} at ${where}`);
+        assert.ok(l.y + l.h <= H, `bottom ${l.y + l.h} at ${where}`);
+      }
+    }
+  });
+});

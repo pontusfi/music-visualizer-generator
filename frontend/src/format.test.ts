@@ -89,6 +89,27 @@ describe("estimateRenderMinutes", () => {
     const half = estimateRenderMinutes(240, 60, 1080);
     expect(half).toBeCloseTo(full / 2, 1);
   });
+
+  it("doubles when one upload is cut for both aspects", () => {
+    const one = estimateRenderMinutes(480, 60, 1080, null, 1);
+    const two = estimateRenderMinutes(480, 60, 1080, null, 2);
+    expect(two).toBeCloseTo(one * 2, 5);
+  });
+
+  it("quotes one video when it is not told how many", () => {
+    expect(estimateRenderMinutes(480, 60, 1080, null)).toBeCloseTo(
+      estimateRenderMinutes(480, 60, 1080, null, 1),
+      5,
+    );
+  });
+
+  it("costs a portrait cut the same as the landscape one at the same tier", () => {
+    // 1080x1920 and 1920x1080 are the same number of pixels; keying the rate
+    // off the frame height alone quoted the portrait render as 4K
+    const landscape = estimateRenderMinutes(480, 60, Math.min(1920, 1080));
+    const portrait = estimateRenderMinutes(480, 60, Math.min(1080, 1920));
+    expect(portrait).toBe(landscape);
+  });
 });
 
 describe("stateLabel", () => {

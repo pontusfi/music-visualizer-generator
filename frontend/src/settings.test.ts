@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyPreset,
+  ASPECTS,
   LOOKS,
   DEFAULT_SETTINGS,
+  dimensions,
   matchPreset,
   OUTPUT_PRESETS,
+  plannedOutputs,
+  RESOLUTIONS,
   toFormData,
+  toggleAspect,
 } from "./settings";
 
 const image = new File([new Uint8Array([1, 2, 3])], "cover.png", { type: "image/png" });
@@ -21,14 +26,27 @@ describe("toFormData", () => {
 
   it("sends the render parameters as strings", () => {
     const form = toFormData(
-      { ...DEFAULT_SETTINGS, fps: 30, width: 1280, height: 720, crf: 20 },
+      { ...DEFAULT_SETTINGS, fps: 30, resolution: 720, crf: 20 },
       image,
       audio,
     );
     expect(form.get("fps")).toBe("30");
-    expect(form.get("width")).toBe("1280");
-    expect(form.get("height")).toBe("720");
+    expect(form.get("resolution")).toBe("720");
     expect(form.get("crf")).toBe("20");
+  });
+
+  it("sends one aspect field per aspect, which is how the server reads a list", () => {
+    const one = toFormData(DEFAULT_SETTINGS, image, audio);
+    expect(one.getAll("aspects")).toEqual(["16:9"]);
+
+    const both = toFormData(
+      { ...DEFAULT_SETTINGS, aspects: ["9:16", "16:9"] },
+      image,
+      audio,
+    );
+    // ordered, so the server renders the desktop cut first whatever order the
+    // buttons were clicked in
+    expect(both.getAll("aspects")).toEqual(["16:9", "9:16"]);
   });
 
   it("omits the preview window unless it is switched on", () => {
@@ -67,10 +85,87 @@ describe("toFormData", () => {
 
 describe("defaults", () => {
   it("start at 1080p60, which is what the README calls the real render", () => {
-    expect(DEFAULT_SETTINGS.width).toBe(1920);
-    expect(DEFAULT_SETTINGS.height).toBe(1080);
+    expect(DEFAULT_SETTINGS.resolution).toBe(1080);
     expect(DEFAULT_SETTINGS.fps).toBe(60);
     expect(DEFAULT_SETTINGS.hpss).toBe(true);
+  });
+
+  it("start on the desktop cut alone, not both", () => {
+    expect(DEFAULT_SETTINGS.aspects).toEqual(["16:9"]);
+  });
+});
+
+describe("dimensions", () => {
+  it("reads the resolution as the short edge, whichever way the frame turns", () => {
+    expect(dimensions(1080, "16:9")).toEqual({ width: 1920, height: 1080 });
+    expect(dimensions(1080, "9:16")).toEqual({ width: 1080, height: 1920 });
+  });
+
+  it("derives the whole tier table both ways round", () => {
+    const table: Array<[number, number]> = [
+      [720, 1280],
+      [1080, 1920],
+      [1440, 2560],
+      [2160, 3840],
+    ];
+    for (const [short, long] of table) {
+      expect(dimensions(short, "16:9")).toEqual({ width: long, height: short });
+      expect(dimensions(short, "9:16")).toEqual({ width: short, height: long });
+    }
+  });
+
+  it("only ever produces edges yuv420p can encode", () => {
+    for (const r of RESOLUTIONS) {
+      for (const a of ASPECTS) {
+        const { width, height } = dimensions(r.short, a.id);
+        expect(width % 2, `${r.label} ${a.id} width`).toBe(0);
+        expect(height % 2, `${r.label} ${a.id} height`).toBe(0);
+      }
+    }
+  });
+
+  it("covers every tier the panel offers", () => {
+    expect(RESOLUTIONS.map((r) => r.short)).toEqual([720, 1080, 1440, 2160]);
+  });
+});
+
+describe("plannedOutputs", () => {
+  it("is one video for one aspect", () => {
+    expect(plannedOutputs(DEFAULT_SETTINGS)).toEqual([
+      { aspect: "16:9", width: 1920, height: 1080 },
+    ]);
+  });
+
+  it("is both videos, desktop first, when both are ticked", () => {
+    const both = plannedOutputs({ ...DEFAULT_SETTINGS, aspects: ["9:16", "16:9"] });
+    expect(both).toEqual([
+      { aspect: "16:9", width: 1920, height: 1080 },
+      { aspect: "9:16", width: 1080, height: 1920 },
+    ]);
+  });
+});
+
+describe("toggleAspect", () => {
+  it("adds an aspect that was off", () => {
+    expect(toggleAspect(DEFAULT_SETTINGS, "9:16")).toEqual(["16:9", "9:16"]);
+  });
+
+  it("removes an aspect that was on", () => {
+    const both = { ...DEFAULT_SETTINGS, aspects: ["16:9", "9:16"] as const };
+    expect(toggleAspect({ ...both, aspects: [...both.aspects] }, "16:9")).toEqual([
+      "9:16",
+    ]);
+  });
+
+  it("refuses to switch off the last one, which would render nothing", () => {
+    expect(toggleAspect(DEFAULT_SETTINGS, "16:9")).toEqual(["16:9"]);
+  });
+
+  it("keeps the desktop cut first however the buttons were clicked", () => {
+    const portraitOnly = { ...DEFAULT_SETTINGS, aspects: ["9:16"] as const };
+    expect(
+      toggleAspect({ ...portraitOnly, aspects: [...portraitOnly.aspects] }, "16:9"),
+    ).toEqual(["16:9", "9:16"]);
   });
 });
 
@@ -91,8 +186,7 @@ describe("output presets", () => {
 
   it("carries every field the preset names onto the settings", () => {
     const next = applyPreset(DEFAULT_SETTINGS, byId("master"));
-    expect(next.width).toBe(3840);
-    expect(next.height).toBe(2160);
+    expect(next.resolution).toBe(2160);
     expect(next.fps).toBe(60);
     expect(next.crf).toBe(14);
     expect(next.preset).toBe("slower");
@@ -105,6 +199,21 @@ describe("output presets", () => {
     expect(next.title).toBe("Ashes");
     expect(next.bands).toBe(40);
     expect(next.hpss).toBe(true);
+  });
+
+  it("leaves the chosen aspects alone, the way it leaves the credit line", () => {
+    // which platforms you are cutting for is not something a quality preset
+    // gets to reset
+    const both = { ...DEFAULT_SETTINGS, aspects: ["16:9", "9:16"] as const };
+    for (const preset of OUTPUT_PRESETS) {
+      const next = applyPreset({ ...both, aspects: [...both.aspects] }, preset);
+      expect(next.aspects).toEqual(["16:9", "9:16"]);
+    }
+  });
+
+  it("still recognises a preset when both aspects are ticked", () => {
+    const both = { ...DEFAULT_SETTINGS, aspects: ["16:9", "9:16"] as const };
+    expect(matchPreset({ ...both, aspects: [...both.aspects] })).toBe("deliver");
   });
 
   it("switches the test window on for the test preset and off for the others", () => {
@@ -129,7 +238,7 @@ describe("output presets", () => {
     expect(matchPreset({ ...DEFAULT_SETTINGS, crf: 23 })).toBeNull();
     expect(matchPreset({ ...DEFAULT_SETTINGS, fps: 30 })).toBeNull();
     expect(matchPreset({ ...DEFAULT_SETTINGS, preset: "veryfast" })).toBeNull();
-    expect(matchPreset({ ...DEFAULT_SETTINGS, height: 720, width: 1280 })).toBeNull();
+    expect(matchPreset({ ...DEFAULT_SETTINGS, resolution: 720 })).toBeNull();
   });
 
   it("does not confuse the test preset with a 720p render of the whole track", () => {

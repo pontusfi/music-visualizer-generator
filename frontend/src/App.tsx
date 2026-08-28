@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { cancelJob, createJob, getHealth, subscribe, videoUrl } from "./api";
+import { cancelJob, createJob, getHealth, subscribe } from "./api";
 import { bestDuration, probeDuration } from "./audio";
 import { ActionBar } from "./components/ActionBar";
 import { AdvancedPanel } from "./components/AdvancedPanel";
@@ -274,7 +274,6 @@ export default function App() {
             hasCover={image !== null}
             playing={preview.playing}
             job={job}
-            videoSrc={job?.state === "done" ? videoUrl(job.id) : null}
           />
           <Transport
             metersRef={preview.metersRef}

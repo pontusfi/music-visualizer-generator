@@ -1,9 +1,12 @@
 import { formatClock } from "../format";
 import {
+  ASPECTS,
+  dimensions,
   PRESETS,
   QUALITIES,
   RESOLUTIONS,
   type RenderSettings,
+  toggleAspect,
 } from "../settings";
 
 interface Props {
@@ -18,16 +21,44 @@ export function AdvancedPanel({ settings, duration, disabled, onChange }: Props)
 
   return (
     <section className="rail__block rail__block--sunk">
+      <div className="micro">Aspect</div>
+      <div className="grid grid--2">
+        {ASPECTS.map((a) => {
+          const on = settings.aspects.includes(a.id);
+          const { width, height } = dimensions(settings.resolution, a.id);
+          return (
+            <button
+              key={a.id}
+              type="button"
+              className={on ? "cell cell--on" : "cell"}
+              disabled={disabled}
+              aria-pressed={on}
+              onClick={() => onChange({ aspects: toggleAspect(settings, a.id) })}
+            >
+              {a.label}
+              <em>
+                {a.note} · {width}×{height}
+              </em>
+            </button>
+          );
+        })}
+      </div>
+      <p className="check__note">
+        {settings.aspects.length > 1
+          ? "Both cuts come off one upload and one analysis pass — but each one draws every frame again, so it is twice the render."
+          : "Tick both to get a desktop and a phone cut from the same upload."}
+      </p>
+
       <div className="micro">Resolution</div>
       <div className="grid grid--4">
         {RESOLUTIONS.map((r) => (
           <button
             key={r.label}
             type="button"
-            className={settings.height === r.height ? "cell cell--on" : "cell"}
+            className={settings.resolution === r.short ? "cell cell--on" : "cell"}
             disabled={disabled}
-            aria-pressed={settings.height === r.height}
-            onClick={() => onChange({ width: r.width, height: r.height })}
+            aria-pressed={settings.resolution === r.short}
+            onClick={() => onChange({ resolution: r.short })}
           >
             {r.label}
             <em>{r.note}</em>

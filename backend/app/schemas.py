@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -30,6 +31,39 @@ Preset = Literal[
     "veryslow",
 ]
 
+Aspect = Literal["16:9", "9:16"]
+
+#: aspect -> (key, width ratio, height ratio). The key names the output in URLs
+#: and on disk; ":" is not a filename or query-string character worth fighting.
+ASPECTS: dict[str, tuple[str, int, int]] = {
+    "16:9": ("landscape", 16, 9),
+    "9:16": ("portrait", 9, 16),
+}
+
+
+def _even(value: float) -> int:
+    """yuv420p subsamples chroma, so both edges have to be even."""
+    return int(round(value / 2)) * 2
+
+
+@dataclass(frozen=True)
+class Output:
+    """One video a job will produce."""
+
+    key: str
+    aspect: str
+    width: int
+    height: int
+
+    @property
+    def filename(self) -> str:
+        return f"out-{self.key}.mp4"
+
+    @property
+    def suffix(self) -> str:
+        """What tells two downloads of the same track apart."""
+        return f" ({self.aspect.replace(':', 'x')})"
+
 
 #: the looks viz/looks/index.js registers. Kept here as well so a typo is a
 #: 422 at upload time rather than a blank video forty minutes later.
@@ -45,8 +79,12 @@ class JobParams(BaseModel):
 
     fps: int = Field(default=60, ge=1, le=120)
     sample_rate: int = Field(default=44100, ge=8000, le=192000)
-    width: int = Field(default=1920, ge=256, le=7680)
-    height: int = Field(default=1080, ge=256, le=4320)
+    #: the SHORT edge of the frame, so one number covers both orientations:
+    #: 1080 is 1920x1080 landscape and 1080x1920 portrait
+    resolution: int = Field(default=1080, ge=256, le=4320)
+    aspects: list[Aspect] = Field(
+        default_factory=lambda: ["16:9"], min_length=1, max_length=len(ASPECTS)
+    )
     title: str = Field(default="", max_length=120)
     artist: str = Field(default="", max_length=120)
     crf: int = Field(default=16, ge=0, le=51)
@@ -65,8 +103,10 @@ class JobParams(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> "JobParams":
-        if self.width % 2 or self.height % 2:
-            raise ValueError("width and height must be even for yuv420p output")
+        if self.resolution % 2:
+            raise ValueError("resolution must be even for yuv420p output")
+        if len(set(self.aspects)) != len(self.aspects):
+            raise ValueError("each aspect ratio can only be rendered once")
         if self.sample_rate % self.fps:
             raise ValueError(
                 f"{self.sample_rate} Hz does not divide evenly by {self.fps} fps; "
@@ -79,6 +119,22 @@ class JobParams(BaseModel):
             if self.preview_end <= self.preview_start:
                 raise ValueError("preview_end must be greater than preview_start")
         return self
+
+    def outputs(self) -> list[Output]:
+        """The videos this job will render, in the order it will render them."""
+        made = []
+        for aspect in self.aspects:
+            key, wr, hr = ASPECTS[aspect]
+            scale = self.resolution / min(wr, hr)
+            made.append(
+                Output(
+                    key=key,
+                    aspect=aspect,
+                    width=_even(wr * scale),
+                    height=_even(hr * scale),
+                )
+            )
+        return made
 
     def preview_range(self) -> tuple[float, float] | None:
         if self.preview_start is None or self.preview_end is None:

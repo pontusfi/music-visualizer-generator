@@ -22,6 +22,9 @@ export const name = "Burn";
 
 export function draw(ctx, sig, a) {
   const { W, H, art, layout, palette, burnMasks, channels, grain, vignette, tint } = a;
+  // sizes key off the short edge, so the type and the tick do not swell in a
+  // 9:16 frame where the height is the long one
+  const { unit } = layout;
   const s = sig;
 
   // --- colour -------------------------------------------------------------
@@ -90,7 +93,11 @@ export function draw(ctx, sig, a) {
   const gap = W * 0.0022;
   const bands = s.spectrum.length || 1;
   const bw = (w - gap * (bands - 1)) / bands;
-  const maxH = Math.max(0, H - base) * 0.92;
+  // the strip below the cover, but never more than the cover's own share: in a
+  // phone frame that strip is most of the picture, and filling it turns the
+  // shadow the record casts into a field of bars. barCap is Infinity whenever
+  // the height binds, so a 16:9 render is untouched.
+  const maxH = Math.min(Math.max(0, H - base) * 0.92, layout.barCap);
   for (let b = 0; b < bands; b += 1) {
     const v = Math.pow(s.spectrum[b], 1.7); // dB-flat looks inert
     if (v <= 0.015) continue;
@@ -105,20 +112,20 @@ export function draw(ctx, sig, a) {
     const tick = s.downbeatPulse * 0.7 + s.beatPulse * 0.3;
     ctx.globalAlpha = 0.28 + tick * 0.5;
     ctx.fillStyle = ember;
-    ctx.fillRect(x, base, w, Math.max(1, H * 0.0022 * (1 + tick * 2.2)));
+    ctx.fillRect(x, base, w, Math.max(1, unit * 0.0022 * (1 + tick * 2.2)));
     ctx.globalAlpha = 1;
   }
 
   // --- credit line --------------------------------------------------------
   if (a.artist || a.title) {
-    ctx.font = `${Math.round(H * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
+    ctx.font = `${Math.round(unit * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
     ctx.fillStyle = palette.boneCss;
-    ctx.letterSpacing = `${Math.round(H * 0.006)}px`;
+    ctx.letterSpacing = `${Math.round(unit * 0.006)}px`;
     ctx.textBaseline = "alphabetic";
     ctx.globalAlpha = 0.30 + s.crack * 0.25;
-    ctx.fillText(a.artist.toUpperCase(), x, y - H * 0.028);
+    ctx.fillText(a.artist.toUpperCase(), x, y - unit * 0.028);
     ctx.globalAlpha = 0.62 + s.crack * 0.30;
-    ctx.fillText(a.title.toUpperCase(), x, y - H * 0.010);
+    ctx.fillText(a.title.toUpperCase(), x, y - unit * 0.010);
     ctx.globalAlpha = 1;
     ctx.letterSpacing = "0px";
   }

@@ -10,6 +10,15 @@ const COVER_HEIGHT = 0.62;
 const COVER_TOP = 0.10;
 /** Widest the cover may get before it starts fighting the frame edges. */
 const COVER_MAX_WIDTH = 0.86;
+/**
+ * Bar height as a share of the cover, used only when the width binds.
+ *
+ * 0.4155 is (0.28H x 0.92) / 0.62H — the height Burn's spectrum reaches in a
+ * 16:9 frame, re-expressed against the cover instead of against the strip
+ * below it. In a phone frame that strip is most of the picture, so a look that
+ * fills it draws a field of bars rather than a shadow under the record.
+ */
+export const BAR_SHARE = 0.4155;
 
 const lum = (c) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
 const chroma = (c) => Math.max(...c) - Math.min(...c);
@@ -66,21 +75,45 @@ export function pickPalette(pixels) {
   };
 }
 
-/** Where the cover sits in a W x H frame, in whole pixels. */
+/**
+ * Where the cover sits in a W x H frame, in whole pixels.
+ *
+ * The cover wants 62% of the height. A frame too narrow to give it that — a
+ * phone cut, or a panoramic cover on any frame — binds on the width instead,
+ * and then the fixed 10% top is wrong: it would leave the block stranded at the
+ * top with a third of the frame empty below the spectrum. So a width-bound
+ * layout is centred, and reports a cap for the looks that draw downward out of
+ * the cover.
+ *
+ * Both of those apply only when the width binds, which at 16:9 happens only for
+ * a cover wider than about 2.5:1 — so an ordinary landscape render comes out
+ * exactly where it always did.
+ */
 export function layoutFor(artW, artH, W, H) {
   const ratio = artW > 0 && artH > 0 ? artW / artH : 1;
   let h = Math.round(H * COVER_HEIGHT);
   let w = Math.round(h * ratio);
+  let widthBound = false;
   const maxW = Math.round(W * COVER_MAX_WIDTH);
   if (w > maxW) {
     w = maxW;
     h = Math.round(w / ratio);
+    widthBound = true;
   }
+  w = Math.max(1, w);
+  h = Math.max(1, h);
   return {
-    w: Math.max(1, w),
-    h: Math.max(1, h),
+    w,
+    h,
     x: Math.round((W - w) / 2),
-    y: Math.round(H * COVER_TOP),
+    y: widthBound
+      ? Math.max(0, Math.round((H - h - h * BAR_SHARE) * 0.5))
+      : Math.round(H * COVER_TOP),
+    // sizes key off the short edge: in a 9:16 frame the height is the long one,
+    // and type scaled to it comes out nearly twice too big
+    unit: Math.min(W, H),
+    // Infinity where the height binds, so the cap cannot alter a 16:9 render
+    barCap: widthBound ? h * BAR_SHARE : Infinity,
   };
 }
 

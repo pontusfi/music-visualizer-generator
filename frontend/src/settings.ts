@@ -1,9 +1,13 @@
+export type Aspect = "16:9" | "9:16";
+
 export interface RenderSettings {
   artist: string;
   title: string;
   fps: number;
-  width: number;
-  height: number;
+  /** The SHORT edge of the frame, so one number covers both orientations. */
+  resolution: number;
+  /** One cut, or both off the same upload. Never empty. */
+  aspects: Aspect[];
   crf: number;
   preset: string;
   bands: number;
@@ -19,8 +23,8 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   artist: "",
   title: "",
   fps: 60,
-  width: 1920,
-  height: 1080,
+  resolution: 1080,
+  aspects: ["16:9"],
   crf: 16,
   preset: "slow",
   bands: 24,
@@ -31,11 +35,25 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   previewEnd: 45,
 };
 
+export interface AspectOption {
+  id: Aspect;
+  label: string;
+  note: string;
+  /** What the server calls this output in a URL and on disk. */
+  variant: string;
+}
+
+/** Declaration order is render order: the desktop cut comes out first. */
+export const ASPECTS: AspectOption[] = [
+  { id: "16:9", label: "16:9", note: "desktop", variant: "landscape" },
+  { id: "9:16", label: "9:16", note: "phone", variant: "portrait" },
+];
+
 export const RESOLUTIONS = [
-  { label: "720p", width: 1280, height: 720, note: "fastest" },
-  { label: "1080p", width: 1920, height: 1080, note: "delivery" },
-  { label: "1440p", width: 2560, height: 1440, note: "slow" },
-  { label: "4K", width: 3840, height: 2160, note: "overnight" },
+  { label: "720p", short: 720, note: "fastest" },
+  { label: "1080p", short: 1080, note: "delivery" },
+  { label: "1440p", short: 1440, note: "slow" },
+  { label: "4K", short: 2160, note: "overnight" },
 ];
 
 export const QUALITIES = [
@@ -47,6 +65,57 @@ export const QUALITIES = [
 
 export const PRESETS = ["veryfast", "faster", "fast", "medium", "slow", "slower"];
 
+const RATIOS: Record<Aspect, [number, number]> = {
+  "16:9": [16, 9],
+  "9:16": [9, 16],
+};
+
+/** yuv420p subsamples chroma, so both edges have to be even. */
+const even = (value: number) => Math.round(value / 2) * 2;
+
+export function dimensions(
+  resolution: number,
+  aspect: Aspect,
+): { width: number; height: number } {
+  const [wr, hr] = RATIOS[aspect];
+  const scale = resolution / Math.min(wr, hr);
+  return { width: even(wr * scale), height: even(hr * scale) };
+}
+
+export function variantOf(aspect: Aspect): string {
+  return ASPECTS.find((a) => a.id === aspect)!.variant;
+}
+
+/** In render order, whatever order the buttons were clicked in. */
+export function orderedAspects(aspects: Aspect[]): Aspect[] {
+  return ASPECTS.map((a) => a.id).filter((id) => aspects.includes(id));
+}
+
+export interface PlannedOutput {
+  aspect: Aspect;
+  width: number;
+  height: number;
+}
+
+/** The videos this upload will produce, in the order the server renders them. */
+export function plannedOutputs(settings: RenderSettings): PlannedOutput[] {
+  return orderedAspects(settings.aspects).map((aspect) => ({
+    aspect,
+    ...dimensions(settings.resolution, aspect),
+  }));
+}
+
+/** Switching an aspect on or off. The last one on cannot be switched off —
+ *  a job with nothing to render is not a state worth being able to reach. */
+export function toggleAspect(settings: RenderSettings, aspect: Aspect): Aspect[] {
+  const on = settings.aspects.includes(aspect);
+  if (on && settings.aspects.length === 1) return settings.aspects;
+  const next = on
+    ? settings.aspects.filter((a) => a !== aspect)
+    : [...settings.aspects, aspect];
+  return orderedAspects(next);
+}
+
 /** Everything the POST needs, in the shape the FastAPI form expects. */
 export function toFormData(
   settings: RenderSettings,
@@ -57,8 +126,11 @@ export function toFormData(
   form.append("image", image);
   form.append("audio", audio);
   form.append("fps", String(settings.fps));
-  form.append("width", String(settings.width));
-  form.append("height", String(settings.height));
+  form.append("resolution", String(settings.resolution));
+  // a repeated key is how a list reaches FastAPI's Form(...)
+  for (const aspect of orderedAspects(settings.aspects)) {
+    form.append("aspects", aspect);
+  }
   form.append("title", settings.title.trim());
   form.append("artist", settings.artist.trim());
   form.append("crf", String(settings.crf));
@@ -78,8 +150,7 @@ export interface OutputPreset {
   name: string;
   /** The one-line spec printed under the name. */
   spec: string;
-  width: number;
-  height: number;
+  resolution: number;
   fps: number;
   crf: number;
   preset: string;
@@ -92,8 +163,7 @@ export const OUTPUT_PRESETS: OutputPreset[] = [
     id: "test",
     name: "Test window",
     spec: "720p · 60 · short window",
-    width: 1280,
-    height: 720,
+    resolution: 720,
     fps: 60,
     crf: 20,
     preset: "slow",
@@ -103,8 +173,7 @@ export const OUTPUT_PRESETS: OutputPreset[] = [
     id: "deliver",
     name: "Delivery",
     spec: "1080p · 60 · crf 16 · slow",
-    width: 1920,
-    height: 1080,
+    resolution: 1080,
     fps: 60,
     crf: 16,
     preset: "slow",
@@ -114,8 +183,7 @@ export const OUTPUT_PRESETS: OutputPreset[] = [
     id: "master",
     name: "Master",
     spec: "2160p · 60 · crf 14 · slower",
-    width: 3840,
-    height: 2160,
+    resolution: 2160,
     fps: 60,
     crf: 14,
     preset: "slower",
@@ -124,11 +192,10 @@ export const OUTPUT_PRESETS: OutputPreset[] = [
 ];
 
 /** The fields a preset speaks for. Anything outside this list — the credit
- *  line, the analysis settings, where the test window sits — is the user's,
- *  and a preset must not reach in and reset it. */
+ *  line, the analysis settings, which aspects to cut, where the test window
+ *  sits — is the user's, and a preset must not reach in and reset it. */
 const PRESET_FIELDS = [
-  "width",
-  "height",
+  "resolution",
   "fps",
   "crf",
   "preset",

@@ -9,8 +9,8 @@ export type JobState =
 export interface JobParams {
   fps: number;
   sample_rate: number;
-  width: number;
-  height: number;
+  resolution: number;
+  aspects: string[];
   title: string;
   artist: string;
   crf: number;
@@ -21,6 +21,15 @@ export interface JobParams {
   preview_end: number | null;
 }
 
+/** One of the videos a job renders. */
+export interface JobOutput {
+  key: string;
+  aspect: string;
+  width: number;
+  height: number;
+  done: boolean;
+}
+
 export interface Job {
   id: string;
   state: JobState;
@@ -28,6 +37,7 @@ export interface Job {
   message: string;
   error: string | null;
   params: JobParams;
+  outputs: JobOutput[];
   image_filename: string;
   audio_filename: string;
   created_at: number;

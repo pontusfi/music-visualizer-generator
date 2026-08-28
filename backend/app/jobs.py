@@ -27,7 +27,7 @@ from .pipeline import (
     parse_progress,
     render_command,
 )
-from .schemas import JobParams
+from .schemas import JobParams, Output
 
 log = logging.getLogger("mvg.jobs")
 
@@ -37,7 +37,6 @@ log = logging.getLogger("mvg.jobs")
 ANALYZE_SHARE = 0.25
 
 FRAMES_JSON = "frames.json"
-OUTPUT_NAME = "out.mp4"
 TEMPLATE_NAME = "visualizer.html"
 #: the module tree visualizer.html imports its design from
 VIZ_DIR = "viz"
@@ -73,6 +72,32 @@ class JobState(str, enum.Enum):
 
 
 @dataclass
+class JobOutput:
+    """One of the videos a job renders, and where it got to."""
+
+    spec: Output
+    path: Path
+    done: bool = False
+
+    @property
+    def key(self) -> str:
+        return self.spec.key
+
+    @property
+    def aspect(self) -> str:
+        return self.spec.aspect
+
+    def public(self) -> dict:
+        return {
+            "key": self.spec.key,
+            "aspect": self.spec.aspect,
+            "width": self.spec.width,
+            "height": self.spec.height,
+            "done": self.done,
+        }
+
+
+@dataclass
 class Job:
     id: str
     dir: Path
@@ -81,6 +106,9 @@ class Job:
     audio_name: str
     image_filename: str
     audio_filename: str
+    outputs: list[JobOutput] = field(default_factory=list)
+    #: which output the render loop is on, so progress can be shared out
+    render_index: int = 0
     state: JobState = JobState.QUEUED
     progress: float = 0.0
     message: str = "Queued"
@@ -89,7 +117,6 @@ class Job:
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
-    video_path: Path | None = None
     frame: int | None = None
     frames_total: int | None = None
     rate: float | None = None
@@ -100,6 +127,17 @@ class Job:
     def settled_at(self) -> float:
         return self.finished_at if self.finished_at is not None else self.created_at
 
+    @property
+    def video_path(self) -> Path | None:
+        """What a request that does not name an aspect should get."""
+        for output in self.outputs:
+            if output.done and output.path.exists():
+                return output.path
+        return None
+
+    def output(self, key: str) -> JobOutput | None:
+        return next((o for o in self.outputs if o.key == key), None)
+
     def public(self, log_lines: int = 60) -> dict:
         return {
             "id": self.id,
@@ -108,6 +146,7 @@ class Job:
             "message": self.message,
             "error": self.error,
             "params": self.params.model_dump(),
+            "outputs": [o.public() for o in self.outputs],
             "image_filename": self.image_filename,
             "audio_filename": self.audio_filename,
             "created_at": self.created_at,
@@ -222,6 +261,10 @@ class JobManager:
             audio_name=stored_audio,
             image_filename=image_name,
             audio_filename=audio_name,
+            outputs=[
+                JobOutput(spec=spec, path=job_dir / spec.filename)
+                for spec in params.outputs()
+            ],
         )
         with self._lock:
             self._jobs[job_id] = job
@@ -260,7 +303,6 @@ class JobManager:
 
         job.started_at = time.time()
         frames = job.dir / FRAMES_JSON
-        output = job.dir / OUTPUT_NAME
         p = job.params
         try:
             self._transition(job, JobState.ANALYZING, "Analysing audio")
@@ -284,34 +326,40 @@ class JobManager:
                 self._fail(job, "Analysis failed", code)
                 return
 
-            self._transition(job, JobState.RENDERING, "Rendering frames")
-            code = self._stage(
-                job,
-                "render",
-                render_command(
-                    python_bin=self.settings.python_bin,
-                    script=self.settings.render_script,
-                    root=job.dir,
-                    artwork=job.artwork_name,
-                    audio=job.dir / job.audio_name,
-                    out=output,
-                    width=p.width,
-                    height=p.height,
-                    title=p.title,
-                    artist=p.artist,
-                    crf=p.crf,
-                    preset=p.preset,
-                    look=p.look,
-                    preview=p.preview_range(),
-                ),
-            )
-            if self._aborted(job):
-                return
-            if code != 0 or not output.exists() or output.stat().st_size == 0:
-                self._fail(job, "Render failed", code)
-                return
+            # frames.json does not depend on the frame size, so every aspect is
+            # rendered off the one analysis pass rather than re-running librosa
+            for index, output in enumerate(job.outputs):
+                if self._aborted(job):
+                    return
+                job.render_index = index
+                self._transition(job, JobState.RENDERING, self._render_message(job, output))
+                code = self._stage(
+                    job,
+                    "render",
+                    render_command(
+                        python_bin=self.settings.python_bin,
+                        script=self.settings.render_script,
+                        root=job.dir,
+                        artwork=job.artwork_name,
+                        audio=job.dir / job.audio_name,
+                        out=output.path,
+                        width=output.spec.width,
+                        height=output.spec.height,
+                        title=p.title,
+                        artist=p.artist,
+                        crf=p.crf,
+                        preset=p.preset,
+                        look=p.look,
+                        preview=p.preview_range(),
+                    ),
+                )
+                if self._aborted(job):
+                    return
+                if code != 0 or not output.path.exists() or output.path.stat().st_size == 0:
+                    self._fail(job, "Render failed", code)
+                    return
+                output.done = True
 
-            job.video_path = output
             job.progress = 1.0
             self._settle(job, JobState.DONE, "Finished")
         except Exception as exc:  # a crash here must not strand the job
@@ -321,6 +369,17 @@ class JobManager:
         finally:
             with self._lock:
                 self._procs.pop(job_id, None)
+
+    @staticmethod
+    def _render_message(job: Job, output: JobOutput) -> str:
+        """One output keeps the message it has always had; several name which
+        one is running, or the bar looks stuck when it restarts at the second."""
+        if len(job.outputs) == 1:
+            return "Rendering frames"
+        return (
+            f"Rendering {output.aspect} "
+            f"({job.render_index + 1} of {len(job.outputs)})"
+        )
 
     def _stage(self, job: Job, stage: str, cmd: list[str]) -> int:
         def on_process(proc):
@@ -354,8 +413,12 @@ class JobManager:
             frame = _as_float(data.get("frame"))
             if end is not None and frame is not None and end > start:
                 done = min(1.0, max(0.0, (frame - start) / (end - start)))
+                # the render band is shared out between the aspects, so the
+                # first one finishing is halfway, not finished
+                share = (1.0 - ANALYZE_SHARE) / max(1, len(job.outputs))
                 job.progress = max(
-                    job.progress, ANALYZE_SHARE + done * (1.0 - ANALYZE_SHARE)
+                    job.progress,
+                    ANALYZE_SHARE + (job.render_index + done) * share,
                 )
                 job.frame = int(frame)
                 job.frames_total = int(end)
@@ -452,12 +515,15 @@ class JobManager:
         self.executor.shutdown(wait=False)
 
     # -- presentation ------------------------------------------------------
-    def download_name(self, job: Job) -> str:
+    def download_name(self, job: Job, output: JobOutput | None = None) -> str:
         parts = [p for p in (job.params.artist.strip(), job.params.title.strip()) if p]
         stem = " - ".join(parts) or "visualizer"
         stem = "".join("_" if c in _BAD_FILENAME_CHARS or ord(c) < 32 else c for c in stem)
         stem = " ".join(stem.split()).strip(". ") or "visualizer"
-        return f"{stem[:120]}.mp4"
+        # one video keeps the clean name; two in the same downloads folder need
+        # telling apart
+        suffix = output.spec.suffix if output is not None and len(job.outputs) > 1 else ""
+        return f"{stem[:120]}{suffix}.mp4"
 
 
 def _terminate(proc) -> None:

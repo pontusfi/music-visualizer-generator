@@ -97,7 +97,10 @@ export function buildGrain(W, H, rng, sheets = 8) {
 export function buildVignette(W, H, inner = 0.3, outer = 0.95, strength = 0.55) {
   const c = off(W, H);
   const x = c.getContext("2d");
-  const g = x.createRadialGradient(W / 2, H / 2, H * inner, W / 2, H / 2, H * outer);
+  // radii off the short edge: keyed to the height, a 9:16 frame would put the
+  // falloff outside the picture entirely and the corners would never darken
+  const unit = Math.min(W, H);
+  const g = x.createRadialGradient(W / 2, H / 2, unit * inner, W / 2, H / 2, unit * outer);
   g.addColorStop(0, "rgba(0,0,0,0)");
   g.addColorStop(1, `rgba(0,0,0,${strength})`);
   x.fillStyle = g;

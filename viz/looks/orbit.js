@@ -57,7 +57,10 @@ function angleAt(sig, i) {
 }
 
 export function draw(ctx, s, a) {
-  const { W, H, palette, disc, discR, tint, burnMasks, grain, vignette, signals } = a;
+  const { W, H, layout, palette, disc, discR, tint, burnMasks, grain, vignette, signals } = a;
+  // every size keys off the short edge; the positions below stay proportional
+  // to the frame, which is what keeps the disc centred in any shape
+  const { unit } = layout;
   const cx = W / 2;
   const cy = H * 0.47;
 
@@ -128,7 +131,7 @@ export function draw(ctx, s, a) {
   // a ring that flares on the downbeat
   const flare = s.downbeatPulse * 0.75 + s.beatPulse * 0.25;
   ctx.strokeStyle = ember;
-  ctx.lineWidth = Math.max(1, H * 0.0012 * (1 + flare * 4));
+  ctx.lineWidth = Math.max(1, unit * 0.0012 * (1 + flare * 4));
   ctx.globalAlpha = 0.16 + flare * 0.45;
   ctx.beginPath();
   ctx.arc(cx, cy, inner * (1 + flare * 0.012), 0, Math.PI * 2);
@@ -138,7 +141,7 @@ export function draw(ctx, s, a) {
   // --- chroma, as twelve spokes outside the ring --------------------------
   const spokeAt = inner + reach * 1.18;
   const spokeLen = Math.min(W, H) * 0.035;
-  ctx.lineWidth = Math.max(1, H * 0.0035);
+  ctx.lineWidth = Math.max(1, unit * 0.0035);
   ctx.strokeStyle = palette.boneCss;
   for (let n = 0; n < 12; n += 1) {
     const v = s.chroma[FIFTHS[n]] ?? 0;
@@ -161,7 +164,7 @@ export function draw(ctx, s, a) {
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = stab * 0.5;
     ctx.fillStyle = ember;
-    ctx.fillRect(0, cy - H * 0.0016, W, H * 0.0032);
+    ctx.fillRect(0, cy - unit * 0.0016, W, unit * 0.0032);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
   }
@@ -170,13 +173,13 @@ export function draw(ctx, s, a) {
   if (a.artist || a.title) {
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    ctx.letterSpacing = `${Math.round(H * 0.008)}px`;
+    ctx.letterSpacing = `${Math.round(unit * 0.008)}px`;
     ctx.fillStyle = ember;
-    ctx.font = `${Math.round(H * 0.016)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
+    ctx.font = `${Math.round(unit * 0.016)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
     ctx.globalAlpha = 0.5 + s.crack * 0.3;
     ctx.fillText(a.artist.toUpperCase(), cx, H * 0.90);
     ctx.fillStyle = palette.boneCss;
-    ctx.font = `${Math.round(H * 0.030)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
+    ctx.font = `${Math.round(unit * 0.030)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
     ctx.globalAlpha = 0.72 + s.crack * 0.24;
     ctx.fillText(a.title.toUpperCase(), cx, H * 0.955);
     ctx.globalAlpha = 1;

@@ -23,6 +23,30 @@ const HUE_SPREAD = 0.24;
 export const id = "shear";
 export const name = "Shear";
 
+/** Margin the credit line and the rule keep off the frame edge. */
+const MARGIN = 0.055;
+
+/**
+ * Where the cover and the furniture under it sit.
+ *
+ * This look wants the artwork bigger than the shared layout gives it, which is
+ * fine on a 16:9 frame where the cover is nowhere near the edges. On a phone
+ * frame the layout is already width-bound, so blowing it up again takes the
+ * picture off both sides and the credit line with it. So the scale is capped at
+ * the frame width, and the furniture is inset rather than hung off a cover edge
+ * that may now be at zero. Neither clamp can bite at 16:9.
+ */
+export function composition(layout, W, wanted, dx) {
+  const scale = Math.min(wanted, W / layout.w);
+  const w = layout.w * scale;
+  const h = layout.h * scale;
+  const x = (W - w) / 2 + dx;
+  const margin = W * MARGIN;
+  const left = Math.max(x, margin);
+  const right = Math.min(x + w, W - margin);
+  return { x, w, h, textX: left, ruleX: left, ruleW: Math.max(0, right - left) };
+}
+
 export function init(a) {
   // a fixed per-slice direction and weight, seeded so the tear is the same
   // shape on every render of this track
@@ -32,6 +56,8 @@ export function init(a) {
 
 export function draw(ctx, s, a) {
   const { W, H, art, layout, palette, tint, burnMasks, channels, grain, vignette } = a;
+  // sizes off the short edge; the cover's own placement stays proportional
+  const { unit } = layout;
 
   const emberRgb = shiftHue(palette.ember, (s.hue - 0.5) * HUE_SPREAD * s.tonal);
   const ember = css(emberRgb);
@@ -40,10 +66,13 @@ export function draw(ctx, s, a) {
   ctx.fillRect(0, 0, W, H);
 
   // this look wants the cover big: it is the only subject on screen
-  const scale = a.seat.scale * (1 + s.kick * 0.02) * 1.18;
-  const w = layout.w * scale;
-  const h = layout.h * scale;
-  const x = (W - w) / 2 + a.seat.dx * W * 0.6;
+  const box = composition(
+    layout,
+    W,
+    a.seat.scale * (1 + s.kick * 0.02) * 1.18,
+    a.seat.dx * W * 0.6,
+  );
+  const { w, h, x } = box;
   const y = H * 0.16 + a.seat.dy * H;
 
   const tear = decay(s.sinceOnset, TEAR_LIFE);
@@ -96,24 +125,24 @@ export function draw(ctx, s, a) {
   // --- a rule that snaps to the bar --------------------------------------
   // one horizontal line whose length is the bar position: the only thing in
   // this look that is calm, which is what makes the rest read as violent
-  const ruleY = y + h + H * 0.045;
+  const ruleY = y + h + unit * 0.045;
   ctx.fillStyle = ember;
   ctx.globalAlpha = 0.22;
-  ctx.fillRect(x, ruleY, w, Math.max(1, H * 0.0014));
+  ctx.fillRect(box.ruleX, ruleY, box.ruleW, Math.max(1, unit * 0.0014));
   ctx.globalAlpha = 0.85;
-  ctx.fillRect(x, ruleY, w * s.barPhase, Math.max(1, H * 0.0014 * (1 + s.downbeatPulse * 3)));
+  ctx.fillRect(box.ruleX, ruleY, box.ruleW * s.barPhase, Math.max(1, unit * 0.0014 * (1 + s.downbeatPulse * 3)));
   ctx.globalAlpha = 1;
 
   // --- credit line --------------------------------------------------------
   if (a.artist || a.title) {
     ctx.textBaseline = "alphabetic";
-    ctx.letterSpacing = `${Math.round(H * 0.006)}px`;
-    ctx.font = `${Math.round(H * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
+    ctx.letterSpacing = `${Math.round(unit * 0.006)}px`;
+    ctx.font = `${Math.round(unit * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
     ctx.fillStyle = palette.boneCss;
     ctx.globalAlpha = 0.34 + s.crack * 0.26;
-    ctx.fillText(a.artist.toUpperCase(), x, y - H * 0.028);
+    ctx.fillText(a.artist.toUpperCase(), box.textX, y - unit * 0.028);
     ctx.globalAlpha = 0.66 + s.crack * 0.28;
-    ctx.fillText(a.title.toUpperCase(), x, y - H * 0.010);
+    ctx.fillText(a.title.toUpperCase(), box.textX, y - unit * 0.010);
     ctx.globalAlpha = 1;
     ctx.letterSpacing = "0px";
   }
