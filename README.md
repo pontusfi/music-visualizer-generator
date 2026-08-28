@@ -162,7 +162,7 @@ Design from the artwork, export standalone HTML, then port the drawing into
 
 ## What drives what
 
-`frames.json` gives you six signals per frame, all 0–1:
+`frames.json` is `"version": 2`. Per frame, all 0–1:
 
 | key | source | feel |
 |---|---|---|
@@ -172,11 +172,32 @@ Design from the artwork, export standalone HTML, then port the drawing into
 | `hit` | onset strength, percussive | transient spikes |
 | `rms` | full mix | overall loudness |
 | `spectrum` | 24 log bands, dB-scaled | shape |
+| `beatPhase` | beat grid | 0→1 between beats; the pulse |
+| `barPhase` | beat grid + meter | 0→1 across a bar |
+| `sectionPhase` | segmentation | 0→1 through this part of the song |
+| `hue`, `tonal` | chroma on the circle of fifths | harmony as an angle, and how much to trust it |
+| `bright` | spectral centroid, log-scaled | dark verse vs. open chorus |
+| `drive` | percussive / total energy | blast section vs. clean passage |
+| `arc` | `rms` over ~8 s | the track's long dynamic shape |
+
+And whole-track data, as frame indices: `beats`, `downbeats`, `onsets`,
+`sections`, plus `sectionIndex` per frame, the raw 12×T `chroma`, `tempo` and
+`meter`. `onsets` are discrete events, so a look can run a one-shot on its own
+timeline instead of thresholding a continuous envelope.
 
 The harmonic/percussive split is what makes this usable on death metal.
 A plain FFT band at 80 Hz sees the kick *and* the down-tuned guitar
 fundamental, so on a fast track everything moves at once and reads as mush.
 Splitting first means `kick` follows the drums and `wall` follows the riff.
+
+Two signals exist to be *distrusted*. `tonal` says how tonal the frame actually
+is — a dense atonal wall lands near zero, and a look should weight `hue` by it
+rather than swinging the palette on noise. And beat tracking is only as good as
+the material: everything driven by `beatPhase` should degrade to "slightly off
+pulse", never to broken.
+
+Because `hop_length = sr/fps`, every frame index in this file — beats, onsets,
+section starts — is already a video frame number. Nothing converts.
 
 ## Tuning
 

@@ -1,5 +1,6 @@
 # local environments
 .venv/
+.claude/
 node_modules/
 __pycache__/
 *.py[cod]
