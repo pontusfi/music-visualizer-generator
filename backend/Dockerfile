@@ -19,6 +19,8 @@ RUN pip install --no-cache-dir -r backend/requirements.txt \
  && playwright install --with-deps chromium
 
 COPY analyze.py render.py visualizer.html ./
+# visualizer.html is a shell; the looks it imports live in viz/
+COPY viz ./viz
 COPY backend ./backend
 
 RUN mkdir -p /data/jobs

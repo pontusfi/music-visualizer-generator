@@ -211,6 +211,25 @@ class TestChromaHue:
         _, tonal = chroma_hue(chroma_of(0, 6))
         assert tonal[0] == pytest.approx(0.0, abs=1e-6)
 
+    def test_a_peak_over_a_noisy_floor_still_reads_as_tonal(self):
+        # chroma_stft almost never returns a clean spike: a real frame is one
+        # strong pitch class sitting on a floor of spectral leakage. Dividing
+        # the vector sum by the raw total scores that near zero, which made the
+        # signal useless on actual music -- measured 0.02 mean on a track with
+        # four clearly tonal sections.
+        c = np.full((12, 1), 0.45, dtype=np.float32)
+        c[7, 0] = 1.0
+        hue, tonal = chroma_hue(c)
+        assert tonal[0] > 0.5
+        assert hue[0] == pytest.approx(1 / 12, abs=1e-6)
+
+    def test_reads_a_clearer_peak_as_more_tonal_than_a_vaguer_one(self):
+        clear = np.full((12, 1), 0.2, dtype=np.float32)
+        clear[7, 0] = 1.0
+        vague = np.full((12, 1), 0.8, dtype=np.float32)
+        vague[7, 0] = 1.0
+        assert chroma_hue(clear)[1][0] > chroma_hue(vague)[1][0]
+
     def test_a_flat_chroma_is_atonal(self):
         _, tonal = chroma_hue(np.ones((12, 1), dtype=np.float32))
         assert tonal[0] == pytest.approx(0.0, abs=1e-6)

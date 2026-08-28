@@ -186,6 +186,22 @@ def chroma_hue(chroma) -> tuple[np.ndarray, np.ndarray]:
     C = np.asarray(chroma, dtype=np.float64)
     if C.ndim != 2 or C.shape[0] != 12:
         raise ValueError(f"chroma must be 12 x frames, got {C.shape}")
+
+    # Measure the peaks, not the floor. chroma_stft almost never returns a
+    # clean spike — a real frame is one or two strong pitch classes sitting on
+    # a bed of spectral leakage — and projecting that raw scores even plainly
+    # tonal music near zero (0.02 mean across a test track with four clear
+    # keys). Subtracting the median leaves only what stands above the floor,
+    # and cubing sharpens what is left.
+    median = np.median(C, axis=0)
+    peak = C.max(axis=0)
+    # How far the strongest pitch class stands clear of the floor. Without
+    # this, one class beating a high floor by a hair scores the same as one
+    # standing alone, because the projection below is scale-invariant.
+    prominence = np.divide(peak - median, peak,
+                           out=np.zeros_like(peak), where=peak > 0)
+    C = np.maximum(0.0, C - median) ** 3
+
     angle = np.zeros(12, dtype=np.float64)
     for position, pitch_class in enumerate(FIFTHS):
         angle[pitch_class] = 2.0 * np.pi * position / 12.0
@@ -193,8 +209,11 @@ def chroma_hue(chroma) -> tuple[np.ndarray, np.ndarray]:
     y = np.sin(angle) @ C
     total = C.sum(axis=0)
     hue = np.mod(np.arctan2(y, x) / (2.0 * np.pi), 1.0)
-    tonal = np.divide(np.hypot(x, y), total,
-                      out=np.zeros_like(total), where=total > 0)
+    # how much the surviving classes agree on one direction ...
+    concentration = np.divide(np.hypot(x, y), total,
+                              out=np.zeros_like(total), where=total > 0)
+    # ... and how much there was to agree about
+    tonal = concentration * prominence
     return hue.astype(np.float32), np.clip(tonal, 0.0, 1.0).astype(np.float32)
 
 
