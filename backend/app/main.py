@@ -102,6 +102,7 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
         preset: str = Form("slow"),
         bands: int = Form(24),
         hpss: bool = Form(True),
+        look: str = Form("burn"),
         preview_start: str | None = Form(None),
         preview_end: str | None = Form(None),
         mgr: JobManager = Depends(get_manager),
@@ -118,6 +119,7 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
                 preset=preset,
                 bands=bands,
                 hpss=hpss,
+                look=look,
                 preview_start=_optional(preview_start),
                 preview_end=_optional(preview_end),
             )

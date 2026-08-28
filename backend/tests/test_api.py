@@ -185,3 +185,54 @@ class TestEvents:
 
     def test_events_for_an_unknown_job_is_404(self, client):
         assert client.get("/api/jobs/nope/events").status_code == 404
+
+
+class TestEveryParamSurvivesTheForm:
+    """A field can be added to JobParams, wired into the argv builder and the
+    UI, and still be silently dropped because nobody added it to the Form
+    signature -- the request then succeeds and the job quietly runs with the
+    default. That is exactly how `look` shipped broken: three renders, three
+    different requests, three identical videos.
+
+    So rather than testing one field, assert the binding as a whole."""
+
+    #: fields the server sets itself, not the client
+    SERVER_OWNED = {"sample_rate"}
+
+    def test_the_form_accepts_every_field_a_client_may_set(self, client):
+        from app.schemas import JobParams
+
+        expected = set(JobParams.model_fields) - self.SERVER_OWNED
+        import inspect
+
+        from app.main import create_app  # noqa: F401
+
+        route = next(
+            r for r in client.app.routes
+            if getattr(r, "path", None) == "/api/jobs" and "POST" in getattr(r, "methods", ())
+        )
+        accepted = set(inspect.signature(route.endpoint).parameters)
+        missing = expected - accepted
+        assert not missing, (
+            f"JobParams fields the POST handler cannot receive: {sorted(missing)}. "
+            "A client sending them gets a 201 and the default."
+        )
+
+    def test_the_look_reaches_the_job(self, client):
+        r = upload(client, look="orbit")
+        assert r.status_code == 201, r.text
+        assert r.json()["params"]["look"] == "orbit"
+
+    def test_each_look_reaches_the_job_distinctly(self, client):
+        from app.schemas import LOOKS
+
+        for look in LOOKS:
+            assert upload(client, look=look).json()["params"]["look"] == look
+
+    def test_an_unknown_look_is_refused_rather_than_silently_defaulted(self, client):
+        r = upload(client, look="kaleidoscope")
+        assert r.status_code == 422
+        assert "look" in r.text.lower()
+
+    def test_omitting_the_look_still_works(self, client):
+        assert upload(client).json()["params"]["look"] == "burn"
