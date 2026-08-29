@@ -67,9 +67,9 @@ class Output:
 
 #: the looks viz/looks/index.js registers. Kept here as well so a typo is a
 #: 422 at upload time rather than a blank video forty minutes later.
-LOOKS = ("burn", "orbit", "shear")
+LOOKS = ("burn", "orbit", "refract", "shear")
 
-Look = Literal["burn", "orbit", "shear"]
+Look = Literal["burn", "orbit", "refract", "shear"]
 
 
 class JobParams(BaseModel):

@@ -247,4 +247,9 @@ export const LOOKS: Look[] = [
     name: "Shear",
     note: "the artwork tears along the spectrum and reassembles",
   },
+  {
+    id: "refract",
+    name: "Refract",
+    note: "the cover through moving glass, over a living background — best with a GPU",
+  },
 ];

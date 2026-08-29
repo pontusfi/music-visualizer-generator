@@ -135,6 +135,76 @@ def resolve_capture(requested: str, encoder_available: bool) -> str:
     return requested
 
 
+#: Looks whose pixels depend on the draw order once Chromium rasterizes on the
+#: GPU. Chromium's accelerated 2D canvas caches something across draws: on an
+#: RTX 4060 Ti, Shear's frame 150 rendered four times running settles on one
+#: image, and rendering 149 before each 150 gives a different one — for good,
+#: not as a warm-up. Orbit differs by at most 3 in a channel; Shear reaches 121
+#: across 12% of the frame. Burn and Refract are identical either way, Refract
+#: because its imagery is GL rather than 2D.
+#:
+#: Shared with tests/test_determinism.py, which xfails exactly these, so the
+#: warning and the tests cannot drift apart.
+GPU_UNSTABLE_LOOKS = ("orbit", "shear")
+
+
+def gpu_caution(look: str, gpu: bool) -> str | None:
+    """What to tell the caller before a `--gpu` render of `look`, if anything.
+
+    The frames are not wrong and a straight sequential render is reproducible
+    against itself. What stops being true is that the same frame drawn in a
+    different order matches — which is exactly what `--preview` and the contact
+    sheet do.
+    """
+    if not gpu or look not in GPU_UNSTABLE_LOOKS:
+        return None
+    return (f"note: on the GPU, '{look}' draws slightly differently depending on "
+            f"which frames came before it, so a --preview or a contact sheet "
+            f"will not match the same frames of a full render exactly. The "
+            f"render itself is fine. Use --look refract, or drop --gpu, if you "
+            f"need them to agree.")
+
+
+def describe_renderer(raw: str) -> str:
+    """The renderer string, short enough to sit on the progress line.
+
+    Chromium reports through ANGLE either way, so the wrapper alone says
+    nothing: software raster arrives as `ANGLE (Google, Vulkan 1.3.0
+    (SwiftShader Device (Subzero)) ..., SwiftShader driver)` and the card as
+    `ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 4060 Ti/PCIe/SSE2, OpenGL
+    4.5.0)`. SwiftShader is checked first for exactly that reason — parsing the
+    vendor list first would name it after the Vulkan version it emulates.
+    """
+    if "SwiftShader" in raw:
+        return "swiftshader"
+    if raw.startswith("ANGLE (") and raw.endswith(")"):
+        parts = [p.strip() for p in raw[len("ANGLE ("):-1].split(",")]
+        if len(parts) > 1:
+            return parts[1]
+    return raw.strip() or "unknown"
+
+
+def launch_args(gpu: bool = False) -> list[str]:
+    """Chromium flags for a render.
+
+    One list, in one place, because the determinism test drives its own browser
+    and the two had already drifted: the test was running without
+    `--disable-lcd-text`, so it was proving things about a browser configured
+    unlike the one that does the renders.
+
+    `gpu` is a request, never a detection. Headless Chromium rasterizes on
+    SwiftShader by default, and the two rasterizers do not produce identical
+    pixels — so choosing between them by what hardware happens to be present
+    would make the output depend silently on the machine. The caller asks, and
+    is told what it actually got.
+    """
+    args = ["--force-color-profile=srgb", "--disable-lcd-text"]
+    if gpu:
+        args += ["--use-angle=gl", "--enable-gpu-rasterization",
+                 "--ignore-gpu-blocklist"]
+    return args
+
+
 def ffmpeg_command(*, out, fps: float, audio, capture: str, crf: int,
                    preset: str, frames: int, preview=None) -> list[str]:
     """How the frames on stdin become the finished file.
@@ -274,6 +344,26 @@ ENCODER_JS = """
 #: small enough that progress still moves and memory stays flat.
 ENCODE_BATCH = 60
 
+#: Which rasterizer actually turned up. `--gpu` is a request Chromium is free
+#: to refuse — a blocklisted driver, no GPU at all — and the only symptom of a
+#: refusal is that the render is slow, which is easy to blame on the track.
+RENDERER_JS = """
+() => {
+  try {
+    const gl = document.createElement("canvas").getContext("webgl2")
+            ?? document.createElement("canvas").getContext("webgl");
+    if (!gl) return "no webgl";
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+               : gl.getParameter(gl.RENDERER);
+  } catch (e) {
+    return "unknown";
+  }
+}
+"""
+
+
+
 
 #: Builds the grid inside the page rather than in Python, so the whole feature
 #: costs no new dependency: the frames are already canvases in there.
@@ -353,6 +443,14 @@ def build_parser() -> argparse.ArgumentParser:
                     help="shorthand for --capture png. Lossless frame capture, "
                          "and by far the slowest: PNG encoding inside Chromium "
                          "costs ~270ms a frame.")
+    ap.add_argument("--gpu", action="store_true",
+                    help="rasterize on the GPU instead of Chromium's built-in "
+                         "software renderer. Host only — there is no GPU in the "
+                         "container. Changes the output bytes: the two "
+                         "rasterizers do not agree pixel for pixel, so a render "
+                         "is reproducible against itself, not across this flag. "
+                         "The renderer actually obtained is printed, so a "
+                         "silent fall back to SwiftShader is visible.")
     ap.add_argument("--preview", nargs=2, type=float, metavar=("START", "END"),
                     help="render only this second range; 1280x720 unless -w/-H given")
     ap.add_argument("--progress", action="store_true",
@@ -390,8 +488,7 @@ def main() -> int:
     url = build_url(port, w, h, args.title, args.artist, args.artwork, args.look)
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(args=["--force-color-profile=srgb",
-                                           "--disable-lcd-text"])
+        browser = pw.chromium.launch(args=launch_args(args.gpu))
         page = browser.new_page(viewport={"width": w, "height": h},
                                 device_scale_factor=1)
         # surface the page's own complaints, or a missing asset looks like a hang
@@ -409,6 +506,20 @@ def main() -> int:
 
         meta = page.evaluate("window.meta")
         fps, total = meta["fps"], meta["frames"]
+
+        try:
+            renderer = describe_renderer(page.evaluate(RENDERER_JS))
+        except PlaywrightError:
+            renderer = "unknown"
+        if args.gpu and renderer == "swiftshader":
+            # asked for hardware and got the software renderer anyway. Not
+            # fatal — the render is correct, just slow — but silence here reads
+            # as a heavy track rather than a refused flag.
+            print("warning: --gpu was asked for but Chromium is still on "
+                  "SwiftShader; the render will be no faster", file=sys.stderr)
+        caution = gpu_caution(meta.get("look", args.look), args.gpu)
+        if caution:
+            print(caution, file=sys.stderr)
 
         start, end = 0, total
         if args.preview:
@@ -463,7 +574,8 @@ def main() -> int:
         detail = (f"{bitrate / 1e6:.0f} Mbps in-page" if capture == "webcodecs"
                   else f"crf {args.crf}")
         print(f"rendering frames {start}-{end} at {w}x{h}, {fps} fps, "
-              f"{capture} capture ({detail}), look '{meta.get('look', args.look)}'")
+              f"{capture} capture ({detail}), look '{meta.get('look', args.look)}', "
+              f"raster {renderer}")
         progress(args.progress, frame=start, start=start, end=end,
                  message=f"Rendering {end - start} frames at {w}x{h}")
         try:

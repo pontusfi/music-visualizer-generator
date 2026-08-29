@@ -255,8 +255,10 @@ describe("output presets", () => {
 });
 
 describe("looks", () => {
-  it("offers the three the pipeline registers", () => {
-    expect(LOOKS.map((l) => l.id)).toEqual(["burn", "orbit", "shear"]);
+  it("offers exactly the ones the pipeline registers", () => {
+    // must stay in step with viz/looks/index.js and schemas.LOOKS — a look in
+    // the picker that the renderer does not know produces a blank video
+    expect(LOOKS.map((l) => l.id)).toEqual(["burn", "orbit", "shear", "refract"]);
   });
 
   it("names and describes each one for the picker", () => {

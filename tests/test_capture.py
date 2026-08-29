@@ -219,3 +219,121 @@ class TestFfmpegCommandShape:
     def test_overwrites_without_asking(self):
         # ffmpeg blocks on a y/n prompt otherwise, and nothing is reading stdin
         assert "-y" in _cmd()
+
+
+class TestLaunchArgs:
+    """The Chromium flags that decide what the pixels come out as.
+
+    These used to live in two places — render.py's launch call and the
+    determinism test's own literal — and had already drifted apart: the test
+    was running without --disable-lcd-text, so it was proving the determinism
+    of a browser configured unlike the one that does the renders.
+    """
+
+    def test_the_software_render_keeps_exactly_the_flags_it_had(self):
+        # not a tautology: this is the guard that adding a GPU mode did not
+        # quietly move what every existing render produces
+        assert render.launch_args() == ["--force-color-profile=srgb",
+                                        "--disable-lcd-text"]
+
+    def test_asking_for_the_gpu_adds_the_angle_flags(self):
+        got = render.launch_args(gpu=True)
+        for flag in ("--use-angle=gl", "--enable-gpu-rasterization",
+                     "--ignore-gpu-blocklist"):
+            assert flag in got
+
+    def test_the_colour_flags_survive_into_the_gpu_mode(self):
+        # these are what make the *colour* reproducible; losing one while
+        # gaining hardware raster would be a regression hidden behind a speedup
+        got = render.launch_args(gpu=True)
+        assert "--force-color-profile=srgb" in got
+        assert "--disable-lcd-text" in got
+
+    def test_the_software_mode_asks_for_no_gpu_at_all(self):
+        assert not any("gpu" in f or "angle" in f for f in render.launch_args())
+
+    def test_each_call_gets_its_own_list(self):
+        # a module-level list handed out by reference would let one caller's
+        # append leak into the next render — and the determinism test and the
+        # renderer are exactly two such callers
+        first = render.launch_args()
+        first.append("--wat")
+        assert "--wat" not in render.launch_args()
+
+
+class TestDescribeRenderer:
+    """Which rasterizer turned up, short enough for the progress line.
+
+    `--gpu` is a request Chromium may refuse — a blocklisted driver, no GPU in
+    the container — and the only symptom of a refusal is a slow render, which
+    is easy to misread as a heavy track. So the answer gets printed, and this
+    is the part that makes it readable.
+    """
+
+    #: exactly what this host reports, both ways round
+    SWIFT = ("ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)) "
+             "(0x0000C0DE), SwiftShader driver)")
+    NVIDIA = ("ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 4060 Ti/PCIe/SSE2, "
+              "OpenGL 4.5.0)")
+
+    def test_software_raster_is_named_plainly(self):
+        assert render.describe_renderer(self.SWIFT) == "swiftshader"
+
+    def test_a_real_gpu_is_named_by_its_card(self):
+        assert "4060 Ti" in render.describe_renderer(self.NVIDIA)
+
+    def test_the_two_do_not_read_alike(self):
+        # the whole point: a --gpu run that silently got SwiftShader has to be
+        # distinguishable at a glance from one that did not
+        assert render.describe_renderer(self.SWIFT) != render.describe_renderer(self.NVIDIA)
+
+    def test_swiftshader_wins_over_the_angle_wrapper(self):
+        # SwiftShader reports itself through ANGLE too, so parsing the
+        # parenthesised vendor list first would call it "Vulkan 1.3.0"
+        assert "swiftshader" == render.describe_renderer(self.SWIFT)
+
+    @pytest.mark.parametrize("raw", ["", "unknown", "no webgl", "Mesa Intel(R) UHD"])
+    def test_an_unparseable_string_is_passed_through_rather_than_raising(self, raw):
+        # a crash here would fail a render that was otherwise fine
+        assert isinstance(render.describe_renderer(raw), str)
+
+
+class TestGpuCaution:
+    """Which looks are not bit-reproducible under GPU rasterization.
+
+    Measured, not guessed. On this host's RTX 4060 Ti, Chromium's accelerated
+    2D canvas carries state between draws: rendering frame 150 of Shear four
+    times running settles on one image, and rendering 149 before each 150 gives
+    a different one — permanently, not as a warm-up. Orbit does the same thing
+    at a max channel delta of 3; Shear reaches 121 across 12% of the frame.
+    Burn and Refract are identical either way.
+
+    The render is still correct and still reproducible against itself in a
+    single sequential pass. What it is not is comparable across draw orders,
+    which is what makes `--preview` differ from the same frames of a full
+    render — so the caller is told.
+    """
+
+    def test_no_caution_without_the_gpu_flag(self):
+        # software raster is exact for every look; the whole issue is the flag
+        for look in render.GPU_UNSTABLE_LOOKS:
+            assert render.gpu_caution(look, gpu=False) is None
+
+    @pytest.mark.parametrize("look", ["burn", "refract"])
+    def test_the_stable_looks_say_nothing(self, look):
+        assert render.gpu_caution(look, gpu=True) is None
+
+    @pytest.mark.parametrize("look", ["orbit", "shear"])
+    def test_the_unstable_looks_are_named(self, look):
+        msg = render.gpu_caution(look, gpu=True)
+        assert msg is not None and look in msg
+
+    def test_the_message_says_what_is_actually_at_risk(self):
+        # not "wrong output" — the frames are fine, they just stop being
+        # comparable between a preview and a full render
+        msg = render.gpu_caution("shear", gpu=True).lower()
+        assert "preview" in msg
+
+    def test_an_unknown_look_is_not_warned_about(self):
+        # --look is validated elsewhere; guessing here would be noise
+        assert render.gpu_caution("kaleidoscope", gpu=True) is None

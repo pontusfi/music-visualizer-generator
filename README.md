@@ -253,6 +253,7 @@ picks one — `render.py --look`, or the picker in the web UI.
 | `burn` | the signature. Ten luminance thresholds of the cover ignite from its own highlights on every kick. The ember drifts with the harmony, the composition reseats itself each section, and the channel split fires on discrete onsets. |
 | `orbit` | the record spins. The cover becomes a disc, the spectrum wraps its rim, and the twelve chroma classes sit outside as spokes in circle-of-fifths order. Rotation is locked to the beat grid, so it turns at the track's tempo. |
 | `shear` | the artwork tears along the spectrum. Forty-four horizontal slices, each displaced by its own frequency band; onsets rip it wide and it walks back together over the frames that follow. |
+| `refract` | the cover through moving glass. A domain-warped field fills the frame and the artwork refracts through it per pixel, colour splitting where the glass bends hardest, over a two-pass bloom. The first look drawn in WebGL rather than Canvas2D — see **Rasterisation** below. |
 
 Adding one is a file in `viz/looks/` and a line in `viz/looks/index.js`. A look
 is `{ id, name, draw(ctx, sig, assets), init?(assets) }`, where `sig` is
@@ -264,6 +265,7 @@ viz/main.js      the contract render.py drives, and the wiring
 viz/signals.js   frame i -> what the music is doing; pure, unit-tested
 viz/palette.js   the record's own colours, and where it sits in the frame
 viz/assets.js    burn masks, grain, vignette — everything expensive, built once
+viz/gl.js        the WebGL2 seam: shader looks render here and blit into #c
 ```
 
 Motion trails are analytic rather than a feedback buffer. Orbit computes where
@@ -273,9 +275,59 @@ render would.
 
 That is enforced, not just intended: `tests/test_determinism.py` drives the real
 page and checks that walking the track in order gives byte-identical frames to
-jumping straight to them, for every look. It fails if you introduce a variable
-that survives a frame. `node --test "viz/**/*.test.js"` covers the pure maths
-and needs no dependencies at all.
+jumping straight to them, for every look, under both rasterisers. It fails if
+you introduce a variable that survives a frame. `node --test "viz/**/*.test.js"`
+covers the pure maths and needs no dependencies at all.
+
+### Rasterisation
+
+Headless Chromium draws on SwiftShader, which is a CPU implementation of a GPU.
+`--gpu` puts it on the real one instead. It is opt-in and never detected: the
+two rasterisers do not produce identical pixels, so choosing between them by
+what hardware happens to be present would make the output depend silently on
+the machine. The renderer actually obtained is printed on the
+`rendering frames ...` line, so a refused flag is visible rather than just slow.
+
+Per frame at 1080p, measured on this host:
+
+| look | SwiftShader | RTX 4060 Ti |
+|---|---|---|
+| `burn` | 9.4 ms | 0.06 ms |
+| `orbit` | 13.7 ms | 0.08 ms |
+| `shear` | 9.9 ms | 0.10 ms |
+| `refract` | 42 ms | 0.06 ms |
+
+Speed is not really the point — with the in-page encoder overlapping the draw,
+1080p goes from 98 fps to about 139, because encoding becomes the floor. The
+point is that a heavy per-pixel shader costs *less* than the Canvas2D looks, so
+effects that were unaffordable stop being so: `refract`'s bloom is a real
+two-pass blur, where `burn` has to approximate one with ten masks thresholded at
+init.
+
+`refract` is the one look that wants the GPU. On software it costs about 4.5x
+what the others do, and almost all of that is one fixed cost: getting a WebGL
+frame out at all is ~9 ms on SwiftShader whatever is drawn, and its five passes
+add the rest. It still renders correctly in the container, just slowly. (There
+is no shortcut around it — capturing straight from the GL canvas measures 9.33
+ms against the 9.47 ms of going through the 2D one, so the blit is not the
+cost; WebGL on a CPU rasteriser is.)
+
+**Two caveats, both measured rather than assumed.**
+
+The determinism contract narrows to *the same machine with the same flags*.
+Frame `i` still depends on nothing but `i`, which is the property that matters,
+but the two rasterisers do not agree pixel-for-pixel and different GPU vendors
+will not either.
+
+And `orbit` and `shear` are not order-stable under `--gpu`. Chromium's
+accelerated 2D canvas carries something between draws: Shear's frame 150 comes
+out one way when drawn four times running and another when 149 is drawn before
+each one — settled both ways, not a warm-up. The deltas are 3 for Orbit and 121
+across 12% of the frame for Shear; `burn` and `refract` are exact either way.
+A straight sequential render is fine; what stops matching is `--preview` and the
+contact sheet against the same frames of a full render. `render.py` says so when
+you combine the two, and `tests/test_determinism.py` skips exactly those
+combinations from the same list in `render.py`, so the two cannot drift.
 
 ## What drives what
 

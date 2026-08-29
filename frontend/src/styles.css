@@ -707,6 +707,36 @@ body {
   background: var(--acc);
 }
 
+/* refract: a square bent through a lens */
+.look__glyph--refract {
+  overflow: hidden;
+}
+
+.look__glyph--refract::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: #2a2a30;
+  border-radius: 40% 60% 45% 55% / 55% 45% 60% 40%;
+}
+
+.look__glyph--refract::after {
+  content: "";
+  position: absolute;
+  inset: 8px 3px;
+  border-radius: 99px;
+  border: 1px solid #2a2a30;
+}
+
+.look--on .look__glyph--refract::before {
+  background: var(--acc);
+  box-shadow: 0 0 6px var(--acc);
+}
+
+.look--on .look__glyph--refract::after {
+  border-color: var(--acc);
+}
+
 /* ── advanced ─────────────────────────────────────────────────────────── */
 .grid {
   display: grid;
