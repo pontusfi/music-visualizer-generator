@@ -81,10 +81,12 @@ def should_report(kind: str, text: str, url: str) -> bool:
 
 
 def build_url(port: int, w: int, h: int, title: str, artist: str, artwork: str,
-              look: str = "burn") -> str:
+              look: str = "burn", background: str = "drift",
+              services: str = "") -> str:
     """Percent-encoded, because an ampersand in a track title is not a delimiter."""
     query = urlencode({"w": w, "h": h, "title": title, "artist": artist,
-                       "art": artwork, "look": look})
+                       "art": artwork, "look": look, "bg": background,
+                       "services": services})
     return f"http://127.0.0.1:{port}/visualizer.html?{query}"
 
 
@@ -141,28 +143,47 @@ def resolve_capture(requested: str, encoder_available: bool) -> str:
 #: image, and rendering 149 before each 150 gives a different one — for good,
 #: not as a warm-up. Orbit differs by at most 3 in a channel; Shear reaches 121
 #: across 12% of the frame. Burn and Refract are identical either way, Refract
-#: because its imagery is GL rather than 2D.
+#: because its imagery is GL rather than 2D. Tide was measured clean on the
+#: same hardware and left out on that basis.
 #:
 #: Shared with tests/test_determinism.py, which xfails exactly these, so the
 #: warning and the tests cannot drift apart.
 GPU_UNSTABLE_LOOKS = ("orbit", "shear")
 
+#: Backgrounds with the same hazard, independent of which look draws on top of
+#: them. Measured the same way: on the RTX 4060 Ti, Grid's frame 2 comes out
+#: one way walked to in order and another entered cold, reproducibly, under
+#: `burn` — the one look otherwise exact under both rasterizers, which is what
+#: isolates the instability to the background's own strokes rather than the
+#: look compositing over it. Drift, Nebula, Rays and Dust all measured clean.
+GPU_UNSTABLE_BACKGROUNDS = ("grid",)
 
-def gpu_caution(look: str, gpu: bool) -> str | None:
-    """What to tell the caller before a `--gpu` render of `look`, if anything.
+
+def gpu_caution(look: str, gpu: bool, background: str | None = None) -> str | None:
+    """What to tell the caller before a `--gpu` render of `look` on
+    `background`, if anything.
 
     The frames are not wrong and a straight sequential render is reproducible
     against itself. What stops being true is that the same frame drawn in a
     different order matches — which is exactly what `--preview` and the contact
-    sheet do.
+    sheet do. Either the look or the background can be the cause: a background
+    composites under every look that uses it, so its own instability is
+    inherited by an otherwise-exact look the same way Shear's is.
     """
-    if not gpu or look not in GPU_UNSTABLE_LOOKS:
+    if not gpu:
         return None
-    return (f"note: on the GPU, '{look}' draws slightly differently depending on "
-            f"which frames came before it, so a --preview or a contact sheet "
-            f"will not match the same frames of a full render exactly. The "
-            f"render itself is fine. Use --look refract, or drop --gpu, if you "
-            f"need them to agree.")
+    unstable = [f"look '{look}'"] if look in GPU_UNSTABLE_LOOKS else []
+    if background in GPU_UNSTABLE_BACKGROUNDS:
+        unstable.append(f"background '{background}'")
+    if not unstable:
+        return None
+    which = " and the ".join(unstable)
+    return (f"note: on the GPU, the {which} draws slightly differently "
+            f"depending on which frames came before it, so a --preview or a "
+            f"contact sheet will not match the same frames of a full render "
+            f"exactly. The render itself is fine. Use --look refract, which "
+            f"ignores --background and draws its own GL field instead, or "
+            f"drop --gpu, if you need them to agree.")
 
 
 def describe_renderer(raw: str) -> str:
@@ -421,6 +442,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--preset", default="slow")
     ap.add_argument("--look", default="burn",
                     help="which design to draw: see viz/looks/")
+    ap.add_argument("--background", default="drift",
+                    help="the field a look draws on: see viz/backgrounds/")
+    ap.add_argument("--services", default="",
+                    help="comma-separated streaming services to badge into the "
+                         "frame, e.g. spotify,apple,youtube: see viz/services.js")
     ap.add_argument("--contact-sheet", metavar="PNG",
                     help="draw a grid of frames spread across the track and stop. "
                          "Judging a look costs seconds instead of a test render, "
@@ -485,7 +511,8 @@ def main() -> int:
     h = args.height or (720 if args.preview else 1080)
 
     port = serve(root)
-    url = build_url(port, w, h, args.title, args.artist, args.artwork, args.look)
+    url = build_url(port, w, h, args.title, args.artist, args.artwork, args.look,
+                     args.background, args.services)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(args=launch_args(args.gpu))
@@ -517,7 +544,8 @@ def main() -> int:
             # as a heavy track rather than a refused flag.
             print("warning: --gpu was asked for but Chromium is still on "
                   "SwiftShader; the render will be no faster", file=sys.stderr)
-        caution = gpu_caution(meta.get("look", args.look), args.gpu)
+        caution = gpu_caution(meta.get("look", args.look), args.gpu,
+                              meta.get("background", args.background))
         if caution:
             print(caution, file=sys.stderr)
 

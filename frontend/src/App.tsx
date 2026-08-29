@@ -4,6 +4,7 @@ import { cancelJob, createJob, getHealth, subscribe } from "./api";
 import { bestDuration, probeDuration } from "./audio";
 import { ActionBar } from "./components/ActionBar";
 import { AdvancedPanel } from "./components/AdvancedPanel";
+import { BackgroundPanel } from "./components/BackgroundPanel";
 import { Console } from "./components/Console";
 import { LookPanel } from "./components/LookPanel";
 import { OutputPanel } from "./components/OutputPanel";
@@ -12,7 +13,13 @@ import { Stage } from "./components/Stage";
 import { TopBar } from "./components/TopBar";
 import { Transport } from "./components/Transport";
 import { usePreview } from "./preview/usePreview";
-import { DEFAULT_SETTINGS, type RenderSettings, toFormData } from "./settings";
+import {
+  DEFAULT_SETTINGS,
+  type RenderSettings,
+  SERVICES,
+  toFormData,
+  toggleService,
+} from "./settings";
 import type { Health, Job } from "./types";
 import { loadPeaks } from "./waveform";
 
@@ -235,9 +242,33 @@ export default function App() {
                 />
               </label>
             </div>
+
+            <div className="micro" style={{ marginTop: 14 }}>
+              Streaming services
+            </div>
+            <div className="grid grid--4">
+              {SERVICES.map((svc) => {
+                const on = settings.services.includes(svc.id);
+                return (
+                  <button
+                    key={svc.id}
+                    type="button"
+                    className={on ? "cell cell--on" : "cell"}
+                    disabled={busy}
+                    aria-pressed={on}
+                    onClick={() => patch({ services: toggleService(settings, svc.id) })}
+                  >
+                    <span className={`svc__mark svc__mark--${svc.id}`} aria-hidden="true" />
+                    {svc.name}
+                  </button>
+                );
+              })}
+            </div>
           </section>
 
           <LookPanel settings={settings} disabled={busy} onChange={patch} />
+
+          <BackgroundPanel settings={settings} disabled={busy} onChange={patch} />
 
           <OutputPanel
             settings={settings}

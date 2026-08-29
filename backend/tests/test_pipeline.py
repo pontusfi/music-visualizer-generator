@@ -205,3 +205,43 @@ class TestLookParameter:
             preset="slow",
         )
         assert "--look" not in cmd
+
+
+class TestBackgroundAndServiceParameters:
+    """Both travel the same path `look` does — chosen in the UI, and expected
+    to survive all the way to the query string visualizer.html reads."""
+
+    def _cmd(self, tmp_path, **over):
+        kwargs = dict(
+            python_bin="python",
+            script=tmp_path / "render.py",
+            root=tmp_path,
+            artwork="artwork.png",
+            audio=tmp_path / "audio.wav",
+            out=tmp_path / "out.mp4",
+            width=1920,
+            height=1080,
+            title="",
+            artist="",
+            crf=16,
+            preset="slow",
+        )
+        kwargs.update(over)
+        return pipeline.render_command(**kwargs)
+
+    def test_render_command_passes_the_background_through(self, tmp_path):
+        cmd = self._cmd(tmp_path, background="nebula")
+        assert "--background" in cmd
+        assert cmd[cmd.index("--background") + 1] == "nebula"
+
+    def test_render_command_still_works_without_a_background(self, tmp_path):
+        assert "--background" not in self._cmd(tmp_path)
+
+    def test_render_command_passes_services_as_one_comma_separated_flag(self, tmp_path):
+        cmd = self._cmd(tmp_path, services=["spotify", "apple", "tidal"])
+        assert "--services" in cmd
+        assert cmd[cmd.index("--services") + 1] == "spotify,apple,tidal"
+
+    def test_render_command_omits_services_when_none_are_picked(self, tmp_path):
+        assert "--services" not in self._cmd(tmp_path, services=[])
+        assert "--services" not in self._cmd(tmp_path)

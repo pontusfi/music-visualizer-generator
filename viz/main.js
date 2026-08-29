@@ -3,7 +3,7 @@
  *
  *   window.vizReady        -> true once every asset is decoded
  *   window.renderFrame(i)  -> draws frame i synchronously
- *   window.meta            -> { frames, fps }
+ *   window.meta            -> { frames, fps, look, background }
  *
  * Two rules hold everywhere below this point. The frame index is the only
  * clock — no requestAnimationFrame, no Date.now, nothing that would make the
@@ -13,16 +13,19 @@
 
 import {
   buildBurnMasks,
+  buildCreditScrim,
   buildGrain,
   buildVignette,
   channelSplit,
   paletteFrom,
   Tint,
 } from "./assets.js";
+import { BACKGROUNDS, DEFAULT_BACKGROUND } from "./backgrounds/index.js";
 import { LOOKS, DEFAULT_LOOK } from "./looks/index.js";
 import { css } from "./palette.js";
 import { layoutFor } from "./palette.js";
 import { lerp, mulberry32, smoothstep } from "./rng.js";
+import { drawServices } from "./services.js";
 import { Signals } from "./signals.js";
 
 const params = new URLSearchParams(location.search);
@@ -34,6 +37,11 @@ const ARTIST = params.get("artist") || "";
 // the uploaded cover keeps its own extension; render.py passes the filename
 const ART = params.get("art") || "artwork.jpg";
 const LOOK = params.get("look") || DEFAULT_LOOK;
+const BACKGROUND = params.get("bg") || DEFAULT_BACKGROUND;
+const SERVICES = (params.get("services") || "")
+  .split(",")
+  .map((v) => v.trim())
+  .filter(Boolean);
 
 /** How long a section change takes to settle, in seconds. */
 const SEAT_EASE = 1.2;
@@ -80,6 +88,10 @@ async function init() {
   if (!LOOKS[LOOK]) {
     console.warn(`unknown look "${LOOK}"; falling back to ${DEFAULT_LOOK}`);
   }
+  const background = BACKGROUNDS[BACKGROUND] ?? BACKGROUNDS[DEFAULT_BACKGROUND];
+  if (!BACKGROUNDS[BACKGROUND]) {
+    console.warn(`unknown background "${BACKGROUND}"; falling back to ${DEFAULT_BACKGROUND}`);
+  }
 
   const a = {
     W,
@@ -89,11 +101,14 @@ async function init() {
     palette,
     title: TITLE,
     artist: ARTIST,
+    services: SERVICES,
     signals: sig,
+    bg: background,
     burnMasks: buildBurnMasks(art, layout.w, layout.h),
     channels: channelSplit(art, layout.w, layout.h),
     grain: buildGrain(W, H, mulberry32(1337)),
     vignette: buildVignette(W, H),
+    creditScrim: buildCreditScrim(),
     tint: new Tint(layout.w, layout.h),
     rng: mulberry32,
     // filled in per frame, below
@@ -108,6 +123,7 @@ async function init() {
     return seats.get(n);
   };
 
+  if (typeof background.init === "function") background.init(a);
   if (typeof look.init === "function") look.init(a);
 
   const ease = Math.max(1, sig.fps * SEAT_EASE);
@@ -133,6 +149,7 @@ async function init() {
     }
 
     look.draw(ctx, s, a);
+    if (a.services.length) drawServices(ctx, a.services, a, s);
   }
 
   // A display font that arrived on frame 3 would leave frames 0-2 as the only
@@ -144,7 +161,7 @@ async function init() {
     /* no display font: the fallback stack is the design */
   }
 
-  window.meta = { frames: sig.frames, fps: sig.fps, look: look.id };
+  window.meta = { frames: sig.frames, fps: sig.fps, look: look.id, background: background.id };
   window.renderFrame = renderFrame;
   renderFrame(0);
   window.vizReady = true;

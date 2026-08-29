@@ -37,9 +37,9 @@ settles. There is no database and no account.
 
 ### What the UI exposes
 
-A left rail carries the job — source files, the burn-in credit line, and the
-output preset — and the rest of the window is a stage showing what you are
-about to render.
+A left rail carries the job — source files, the burn-in credit line and
+streaming services, the look, the background, and the output preset — and the
+rest of the window is a stage showing what you are about to render.
 
 Three presets cover the usual answers: **Test window**, **Delivery** (1080p60,
 crf 16), and **Master** (2160p60, crf 14). Each quotes an estimate once the
@@ -152,15 +152,17 @@ python analyze.py audio.wav --fps 60 --bands 24 -o frames.json
 python -m http.server 8000
 #    open http://localhost:8000/visualizer.html?preview=1&w=1280&h=720
 
-# 3. judge a look in seconds: twelve frames across the track, one PNG.
-#    No ffmpeg needed, so this works on a machine that cannot render yet.
-python render.py --look orbit --contact-sheet sheet.png
+# 3. judge a look and a background together in seconds: twelve frames across
+#    the track, one PNG. No ffmpeg needed, so this works on a machine that
+#    cannot render yet — the fast way to check whether a pair fights itself.
+python render.py --look orbit --background nebula --contact-sheet sheet.png
 
 # 4. render a 15-second test at 720p
 python render.py --preview 30 45 --artist "BAND" --title "TRACK" -o test.mp4
 
-# 5. render the whole thing
-python render.py -w 1920 -H 1080 --look burn --artist "BAND" --title "TRACK" -o out.mp4
+# 5. render the whole thing, with a streaming-platform row burned in
+python render.py -w 1920 -H 1080 --look burn --background drift \
+    --services spotify,apple,youtube --artist "BAND" --title "TRACK" -o out.mp4
 
 # 6. the same track as a phone cut — every look refits itself to the frame
 python render.py -w 1080 -H 1920 --look burn --artist "BAND" --title "TRACK" -o vertical.mp4
@@ -224,7 +226,7 @@ iterating.
 ```js
 window.vizReady           // true once assets are decoded
 window.renderFrame(i)     // draws frame i synchronously
-window.meta               // { frames, fps, look }
+window.meta               // { frames, fps, look, background }
 ```
 
 Everything else is design and can be thrown away — see **Looks** below for how
@@ -243,6 +245,25 @@ Both rules are why motion trails here are analytic rather than a feedback
 buffer: a look computes where a thing *was* at frame `i-k` and draws it there,
 so frame `i` never depends on frame `i-1`.
 
+## The credit line
+
+Every look draws artist and title through one shared renderer,
+`viz/credit.js`, rather than each drawing its own — that used to drift: the
+render shipped the type at roughly a third to a sixth the size and opacity
+the web preview promised. `CREDIT.artist`/`CREDIT.title` (≈28px / 56px at
+1080p) and an alpha that **floors** at 0.80/0.92 rather than ranging from
+0.30 fix that; `frontend/src/preview/paint.ts` pins the same two ratios, and
+`frontend/src/preview/paint.test.ts` checks the pin against `viz/credit.js`
+directly, so the stage cannot go back to lying about the render quietly.
+
+**This is a deliberate break from every render made before it.** The credit
+line is bigger and brighter than it used to be, by design — anyone comparing
+an old render against a new one will see the difference immediately.
+
+A baked scrim (`buildCreditScrim` in `viz/assets.js`) sits behind the type so
+it stays legible on a bright cover, which used to be the one case bone-
+coloured text disappeared into the artwork entirely.
+
 ## Looks
 
 `visualizer.html` is a shell. The design lives in `viz/`, and `?look=<id>`
@@ -253,7 +274,8 @@ picks one — `render.py --look`, or the picker in the web UI.
 | `burn` | the signature. Ten luminance thresholds of the cover ignite from its own highlights on every kick. The ember drifts with the harmony, the composition reseats itself each section, and the channel split fires on discrete onsets. |
 | `orbit` | the record spins. The cover becomes a disc, the spectrum wraps its rim, and the twelve chroma classes sit outside as spokes in circle-of-fifths order. Rotation is locked to the beat grid, so it turns at the track's tempo. |
 | `shear` | the artwork tears along the spectrum. Forty-four horizontal slices, each displaced by its own frequency band; onsets rip it wide and it walks back together over the frames that follow. |
-| `refract` | the cover through moving glass. A domain-warped field fills the frame and the artwork refracts through it per pixel, colour splitting where the glass bends hardest, over a two-pass bloom. The first look drawn in WebGL rather than Canvas2D — see **Rasterisation** below. |
+| `refract` | the cover through moving glass. A domain-warped field fills the frame and the artwork refracts through it per pixel, colour splitting where the glass bends hardest, over a two-pass bloom. The first look drawn in WebGL rather than Canvas2D — see **Rasterisation** below. Draws its own GL field as its background and ignores `?bg=`. |
+| `tide` | the cover above a horizon, reflected in moving water below it. ~110 one-pixel-tall `drawImage` scanlines of a flipped copy of the cover, each offset by a sum of three sines driven by the low/mid/high spectrum thirds and the kick — the testable half lives in `waveOffset`. Canvas2D, not WebGL: a liquid reflection does not need per-pixel work, so it costs an order of magnitude less than a shader would have. |
 
 Adding one is a file in `viz/looks/` and a line in `viz/looks/index.js`. A look
 is `{ id, name, draw(ctx, sig, assets), init?(assets) }`, where `sig` is
@@ -264,7 +286,9 @@ every id the server accepts has a module registered, so the two cannot drift.
 viz/main.js      the contract render.py drives, and the wiring
 viz/signals.js   frame i -> what the music is doing; pure, unit-tested
 viz/palette.js   the record's own colours, and where it sits in the frame
-viz/assets.js    burn masks, grain, vignette — everything expensive, built once
+viz/assets.js    burn masks, grain, vignette, the credit scrim — built once
+viz/credit.js    the shared artist/title renderer every look draws through
+viz/services.js  streaming-platform badges, burned into the frame
 viz/gl.js        the WebGL2 seam: shader looks render here and blit into #c
 ```
 
@@ -279,7 +303,48 @@ jumping straight to them, for every look, under both rasterisers. It fails if
 you introduce a variable that survives a frame. `node --test "viz/**/*.test.js"`
 covers the pure maths and needs no dependencies at all.
 
-### Rasterisation
+## Backgrounds
+
+Every look used to open with a flat `fillRect` over the artwork's own darkest
+bucket — close to black for most covers, so almost every render opened on
+dead ground. `?bg=<id>` (`render.py --background`, or the picker in the web
+UI) now picks what a look draws *on*, resolved and reused independently of
+which look is chosen: twenty look/background pairs from one set of files.
+There is no "flat" or "none" entry — the point is that dead ground is not a
+reachable state any more, not that it is merely one option among several.
+
+| id | what it draws | per-frame cost |
+|---|---|---|
+| `drift` | soft diagonal bands of ground↔ember sliding across the frame, the pitch breathing with the low end. Default — the quietest of the five, so an existing render changes the least. | 1 `drawImage` of a pre-built 2W sheet |
+| `nebula` | four layered radial glows on slow seeded orbits, brightening with `rms` and `arc` | 4 `drawImage`, `lighter` |
+| `rays` | light rays from behind the cover, rotating with `barPhase`, flaring on `downbeatPulse` | 1 rotated `drawImage` of a pre-built wedge sheet |
+| `dust` | three parallax layers of seeded specks, drifting at their own rates | 6 `drawImage` (two each, for the wrap) |
+| `grid` | a perspective grid receding to a horizon, advancing on the beat grid rather than the frame counter | ~40 strokes |
+
+A background is `{ id, name, draw(ctx, sig, assets), init?(assets) }`, in
+`viz/backgrounds/`, registered in `viz/backgrounds/index.js` exactly the way
+a look is. `draw` lays the ground fill itself — a look's opening is
+`bg.draw(ctx, s, a)` in place of its own `fillRect`. `refract` is the one
+exception: its GL field already *is* a computed, bass-reactive background, so
+it draws that and ignores `?bg=` rather than compositing a second,
+independently-designed field underneath it.
+
+## Streaming services
+
+`?services=<comma-separated ids>` (`render.py --services`, or the checkboxes
+in the web UI's burn-in panel) badges a "LISTEN ON" row into the frame,
+beneath the credit block, on the same scrim. The marks in `viz/services.js`
+are simplified monochrome paths tinted to the artwork's bone colour, not
+shipped logo assets — no trademarked image enters the repo, and a path scales
+cleanly from 720p to 4K where a bitmap would not. `layoutServices` wraps to a
+second row rather than overflowing when several are picked at 9:16; an
+unpicked service draws nothing.
+
+Registry order is draw order, always: `spotify`, `apple`, `youtube`,
+`soundcloud`, `bandcamp`, `tidal`, `deezer`, `amazon`, regardless of the
+order they were clicked in.
+
+## Rasterisation
 
 Headless Chromium draws on SwiftShader, which is a CPU implementation of a GPU.
 `--gpu` puts it on the real one instead. It is opt-in and never detected: the
@@ -296,6 +361,16 @@ Per frame at 1080p, measured on this host:
 | `orbit` | 13.7 ms | 0.08 ms |
 | `shear` | 9.9 ms | 0.10 ms |
 | `refract` | 42 ms | 0.06 ms |
+
+`tide` was measured on a different machine than the table above (this was
+written from a container without that RTX 4060 Ti, so the two are not
+directly comparable in absolute terms) — 14.9 ms SwiftShader / 0.2 ms GPU,
+against Shear's 20.0 ms / 0.1 ms on that same machine in the same run: about
+0.75x Shear's cost, comfortably the same shape as the other Canvas2D looks
+rather than anything closer to Refract. `ROWS` (110) was left as specified on
+that basis; if a 1080p render on the reference host lands materially above
+the ~10 ms the other 2D looks cost there, bring it down until it does and
+update this note with the real number.
 
 Speed is not really the point — with the in-page encoder overlapping the draw,
 1080p goes from 98 fps to about 139, because encoding becomes the floor. The
@@ -319,15 +394,21 @@ Frame `i` still depends on nothing but `i`, which is the property that matters,
 but the two rasterisers do not agree pixel-for-pixel and different GPU vendors
 will not either.
 
-And `orbit` and `shear` are not order-stable under `--gpu`. Chromium's
+And `orbit` and `shear` are not order-stable under `--gpu` — nor, independent
+of which look draws on top of it, is the `grid` background. Chromium's
 accelerated 2D canvas carries something between draws: Shear's frame 150 comes
 out one way when drawn four times running and another when 149 is drawn before
 each one — settled both ways, not a warm-up. The deltas are 3 for Orbit and 121
-across 12% of the frame for Shear; `burn` and `refract` are exact either way.
-A straight sequential render is fine; what stops matching is `--preview` and the
-contact sheet against the same frames of a full render. `render.py` says so when
-you combine the two, and `tests/test_determinism.py` skips exactly those
-combinations from the same list in `render.py`, so the two cannot drift.
+across 12% of the frame for Shear; `burn`, `refract` and `tide` are exact
+either way, and so are `drift`, `nebula`, `rays` and `dust` as backgrounds.
+Grid was found the same way `burn` proved it isn't at fault: `burn` over
+`grid` still drifts on the GPU, which isolates the instability to the
+background's own strokes rather than to whatever look is compositing over it.
+A straight sequential render is fine either way; what stops matching is
+`--preview` and the contact sheet against the same frames of a full render.
+`render.py` says so when you combine an unstable look or background with
+`--gpu`, and `tests/test_determinism.py` skips exactly those combinations
+from the same two lists in `render.py`, so the two cannot drift.
 
 ## What drives what
 

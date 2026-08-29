@@ -13,6 +13,7 @@
  * Frame i still depends on nothing but i.
  */
 
+import { drawCredit } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
 import { decay } from "../signals.js";
 
@@ -67,8 +68,7 @@ export function draw(ctx, s, a) {
   const emberRgb = shiftHue(palette.ember, (s.hue - 0.5) * HUE_SPREAD * s.tonal);
   const ember = css(emberRgb);
 
-  ctx.fillStyle = palette.groundCss;
-  ctx.fillRect(0, 0, W, H);
+  a.bg.draw(ctx, s, a);
 
   const swell = 1 + s.kick * 0.030 + s.wall * 0.010 + a.seat.scale - 1;
   const R = discR * swell;
@@ -170,22 +170,8 @@ export function draw(ctx, s, a) {
   }
 
   // --- credit line, sitting under the disc --------------------------------
-  if (a.artist || a.title) {
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
-    ctx.letterSpacing = `${Math.round(unit * 0.008)}px`;
-    ctx.fillStyle = ember;
-    ctx.font = `${Math.round(unit * 0.016)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
-    ctx.globalAlpha = 0.5 + s.crack * 0.3;
-    ctx.fillText(a.artist.toUpperCase(), cx, H * 0.90);
-    ctx.fillStyle = palette.boneCss;
-    ctx.font = `${Math.round(unit * 0.030)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
-    ctx.globalAlpha = 0.72 + s.crack * 0.24;
-    ctx.fillText(a.title.toUpperCase(), cx, H * 0.955);
-    ctx.globalAlpha = 1;
-    ctx.letterSpacing = "0px";
-    ctx.textAlign = "left";
-  }
+  // pulled up when the services row is also drawn, so the two never collide
+  drawCredit(ctx, s, a, { x: cx, y: H * (a.services.length ? 0.82 : 0.955), align: "center" });
 
   ctx.globalCompositeOperation = "overlay";
   ctx.globalAlpha = 0.05 + s.hit * 0.03;

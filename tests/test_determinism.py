@@ -44,7 +44,8 @@ pytestmark = pytest.mark.skipif(
     playwright_missing, reason="playwright is not installed"
 )
 
-LOOKS = ("burn", "orbit", "refract", "shear")
+LOOKS = ("burn", "orbit", "refract", "shear", "tide")
+BACKGROUND_IDS = ("drift", "nebula", "rays", "dust", "grid")
 FPS = 60
 FRAMES = 240
 
@@ -173,21 +174,26 @@ HASH_JS = """
 PROBE = (0, 1, 2, 91, 92, 150, 239)
 
 
-def skip_if_known_gpu_drift(page, look):
-    """Orbit and Shear are not order-stable once Chromium rasterizes on the GPU.
+def skip_if_known_gpu_drift(page, look, background=None):
+    """Orbit and Shear are not order-stable once Chromium rasterizes on the GPU;
+    neither is the Grid background, independent of which look draws over it.
 
     Not their fault and not fixable here: the accelerated 2D canvas caches
     something between draws, so Shear's frame 150 comes out one way when it is
     drawn four times running and another when 149 is drawn before each one —
     settled both times, not a warm-up. Measured deltas are 3 for Orbit and 121
-    across 12% of the frame for Shear; Burn and Refract are exact either way.
+    across 12% of the frame for Shear; Burn, Refract and Tide are exact either
+    way, and so are Drift, Nebula, Rays and Dust as backgrounds.
 
-    The list lives in render.py, next to the warning the renderer prints, so
+    The lists live in render.py, next to the warning the renderer prints, so
     this cannot quietly disagree with what users are told.
     """
     _, _, render = page
     if look in render.GPU_UNSTABLE_LOOKS:
         pytest.skip(f"{look} is not order-stable under GPU raster; "
+                    f"render.py warns about it instead")
+    if background in render.GPU_UNSTABLE_BACKGROUNDS:
+        pytest.skip(f"{background} is not order-stable under GPU raster; "
                     f"render.py warns about it instead")
 
 
@@ -273,3 +279,34 @@ def test_a_fresh_page_draws_the_same_frame_as_a_used_one(page, look):
         f"{look}: frame 137 changed across a page reload — something in init "
         f"is unseeded, so two renders of the same track would not match"
     )
+
+
+@pytest.mark.parametrize("background", BACKGROUND_IDS)
+def test_every_background_is_a_function_of_the_frame_index(page, background, request):
+    """The same contract test_a_frame_is_the_same_however_you_arrive_at_it
+    proves for every look, run once per background instead — one fixed look
+    (`burn`, the only one exact under both rasterizers) is enough to isolate
+    the background's own draw path without multiplying the full look matrix
+    by five.
+    """
+    if "gpu" in request.node.callspec.id:
+        skip_if_known_gpu_drift(page, "burn", background)
+    p, port, _ = page
+    p.goto(f"http://127.0.0.1:{port}/visualizer.html"
+           f"?w=320&h=180&art=artwork.png&look=burn&bg={background}&title=T&artist=A")
+    p.wait_for_function("window.vizReady === true", timeout=60_000)
+    assert p.evaluate("window.meta.background") == background
+
+    sequential = {}
+    for i in range(max(PROBE) + 1):
+        p.evaluate("i => window.renderFrame(i)", i)
+        if i in PROBE:
+            sequential[i] = p.evaluate(HASH_JS)
+
+    for i in PROBE:
+        p.evaluate("i => window.renderFrame(i)", FRAMES - 1)
+        p.evaluate("i => window.renderFrame(i)", i)
+        assert p.evaluate(HASH_JS) == sequential[i], (
+            f"{background}: frame {i} differs when entered cold — something in "
+            f"the background's draw path is carrying state between frames"
+        )

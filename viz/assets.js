@@ -108,6 +108,30 @@ export function buildVignette(W, H, inner = 0.3, outer = 0.95, strength = 0.55) 
   return c;
 }
 
+/**
+ * A vertical fade to black, baked once as a 1px-wide strip and stretched over
+ * whichever rectangle the credit or services block occupies.
+ *
+ * Baked because a per-frame gradient is expensive under software raster, the
+ * same reason buildVignette exists — but sized to the strip rather than the
+ * full frame, and stretched rather than sampled by position. A full-frame
+ * bake sampled at the box's own coordinates got this backwards: burn's block
+ * sits near the top of the frame, where a fade anchored to the frame's own
+ * height is still nearly transparent, so the plate came out invisible right
+ * where the scrim exists to help. Stretching a strip transparent-to-opaque
+ * over the box itself is correct wherever the box sits, top or bottom alike.
+ */
+export function buildCreditScrim(strength = 0.55) {
+  const c = off(1, 256);
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, "rgba(0,0,0,0)");
+  g.addColorStop(1, `rgba(0,0,0,${strength})`);
+  x.fillStyle = g;
+  x.fillRect(0, 0, 1, 256);
+  return c;
+}
+
 /** Channel-separated copies, for the transient split. */
 export function channelSplit(img, w, h) {
   const make = (tint) => {

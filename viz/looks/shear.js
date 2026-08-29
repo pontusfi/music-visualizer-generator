@@ -11,6 +11,7 @@
  * nothing is allocated per frame.
  */
 
+import { drawCredit } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
 import { decay } from "../signals.js";
 
@@ -62,8 +63,7 @@ export function draw(ctx, s, a) {
   const emberRgb = shiftHue(palette.ember, (s.hue - 0.5) * HUE_SPREAD * s.tonal);
   const ember = css(emberRgb);
 
-  ctx.fillStyle = palette.groundCss;
-  ctx.fillRect(0, 0, W, H);
+  a.bg.draw(ctx, s, a);
 
   // this look wants the cover big: it is the only subject on screen
   const box = composition(
@@ -134,18 +134,7 @@ export function draw(ctx, s, a) {
   ctx.globalAlpha = 1;
 
   // --- credit line --------------------------------------------------------
-  if (a.artist || a.title) {
-    ctx.textBaseline = "alphabetic";
-    ctx.letterSpacing = `${Math.round(unit * 0.006)}px`;
-    ctx.font = `${Math.round(unit * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
-    ctx.fillStyle = palette.boneCss;
-    ctx.globalAlpha = 0.34 + s.crack * 0.26;
-    ctx.fillText(a.artist.toUpperCase(), box.textX, y - unit * 0.028);
-    ctx.globalAlpha = 0.66 + s.crack * 0.28;
-    ctx.fillText(a.title.toUpperCase(), box.textX, y - unit * 0.010);
-    ctx.globalAlpha = 1;
-    ctx.letterSpacing = "0px";
-  }
+  drawCredit(ctx, s, a, { x: box.textX, y: y - unit * 0.020, align: "left" });
 
   ctx.globalCompositeOperation = "overlay";
   ctx.globalAlpha = 0.06 + s.hit * 0.04;

@@ -21,10 +21,17 @@
  * The frame index is still the only clock: `uFrame` is the only thing that
  * advances, and the noise is a seeded texture rather than an in-shader hash,
  * which would not have been stable across GPU vendors.
+ *
+ * `?bg=` is ignored here. The GL field already *is* this look's background —
+ * it is computed, moves with the bass, and doing anything else would mean
+ * uploading a second, unrelated field as a GL texture and blending two
+ * backgrounds that were never designed to sit under one another. Every other
+ * look draws on dead ground without one; this is the one look that never
+ * needed the axis in the first place.
  */
 
+import { drawCredit } from "../credit.js";
 import { GLStage } from "../gl.js";
-import { css, shiftHue } from "../palette.js";
 import { uniformsFor } from "./refract.uniforms.js";
 
 export const id = "refract";
@@ -216,7 +223,7 @@ export function init(a) {
 }
 
 export function draw(ctx, s, a) {
-  const { gl, glProg, glTex, glRt, W, H, layout, palette } = a;
+  const { gl, glProg, glTex, glRt, W, H } = a;
   const u = uniformsFor(s, a);
 
   gl.draw(glProg.field, {
@@ -255,25 +262,8 @@ export function draw(ctx, s, a) {
   ctx.drawImage(gl.canvas, 0, 0);
 
   // --- everything 2D is still better at -----------------------------------
-  const { unit } = layout;
-  const ember = css(shiftHue(palette.ember, (s.hue - 0.5) * 0.20 * s.tonal));
-
-  if (a.artist || a.title) {
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
-    ctx.letterSpacing = `${Math.round(unit * 0.008)}px`;
-    ctx.fillStyle = ember;
-    ctx.font = `${Math.round(unit * 0.016)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
-    ctx.globalAlpha = 0.5 + s.crack * 0.3;
-    ctx.fillText(a.artist.toUpperCase(), W / 2, H * 0.90);
-    ctx.fillStyle = palette.boneCss;
-    ctx.font = `${Math.round(unit * 0.030)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
-    ctx.globalAlpha = 0.72 + s.crack * 0.24;
-    ctx.fillText(a.title.toUpperCase(), W / 2, H * 0.955);
-    ctx.globalAlpha = 1;
-    ctx.letterSpacing = "0px";
-    ctx.textAlign = "left";
-  }
+  // pulled up when the services row is also drawn, so the two never collide
+  drawCredit(ctx, s, a, { x: W / 2, y: H * (a.services.length ? 0.82 : 0.955), align: "center" });
 
   ctx.globalCompositeOperation = "overlay";
   ctx.globalAlpha = 0.05 + s.hit * 0.03;

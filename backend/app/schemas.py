@@ -67,9 +67,25 @@ class Output:
 
 #: the looks viz/looks/index.js registers. Kept here as well so a typo is a
 #: 422 at upload time rather than a blank video forty minutes later.
-LOOKS = ("burn", "orbit", "refract", "shear")
+LOOKS = ("burn", "orbit", "refract", "shear", "tide")
 
-Look = Literal["burn", "orbit", "refract", "shear"]
+Look = Literal["burn", "orbit", "refract", "shear", "tide"]
+
+#: the backgrounds viz/backgrounds/index.js registers. Same reasoning as
+#: LOOKS: a typo here is a 422, not a render that quietly used the default.
+BACKGROUNDS = ("drift", "nebula", "rays", "dust", "grid")
+
+Background = Literal["drift", "nebula", "rays", "dust", "grid"]
+
+#: the services viz/services.js registers. Order here has no effect on the
+#: badge row — that always follows the registry in services.js — but it does
+#: have to name every id that registry knows about, or a legitimate choice
+#: gets refused.
+SERVICES = ("spotify", "apple", "youtube", "soundcloud", "bandcamp", "tidal", "deezer", "amazon")
+
+Service = Literal[
+    "spotify", "apple", "youtube", "soundcloud", "bandcamp", "tidal", "deezer", "amazon"
+]
 
 
 class JobParams(BaseModel):
@@ -90,6 +106,8 @@ class JobParams(BaseModel):
     crf: int = Field(default=16, ge=0, le=51)
     preset: Preset = "slow"
     look: Look = "burn"
+    background: Background = "drift"
+    services: list[Service] = Field(default_factory=list, max_length=len(SERVICES))
     bands: int = Field(default=24, ge=4, le=64)
     hpss: bool = True
     preview_start: float | None = Field(default=None, ge=0)
@@ -107,6 +125,8 @@ class JobParams(BaseModel):
             raise ValueError("resolution must be even for yuv420p output")
         if len(set(self.aspects)) != len(self.aspects):
             raise ValueError("each aspect ratio can only be rendered once")
+        if len(set(self.services)) != len(self.services):
+            raise ValueError("each streaming service can only be picked once")
         if self.sample_rate % self.fps:
             raise ValueError(
                 f"{self.sample_rate} Hz does not divide evenly by {self.fps} fps; "

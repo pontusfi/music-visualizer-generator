@@ -219,3 +219,70 @@ class TestLookContract:
 
     def test_render_defaults_to_the_signature_look(self, render):
         assert render.build_parser().parse_args([]).look == "burn"
+
+
+class TestBackgroundContract:
+    """A background id travels UI -> schemas -> pipeline -> render.py -> query
+    string, exactly the path `look` proved. Same hops, same hazards."""
+
+    def test_render_accepts_the_background_the_server_sends(self, render, tmp_path):
+        from app.schemas import BACKGROUNDS
+
+        for background in BACKGROUNDS:
+            cmd = pipeline.render_command(
+                python_bin="python",
+                script=tmp_path / "render.py",
+                root=tmp_path,
+                artwork="artwork.png",
+                audio=tmp_path / "audio.wav",
+                out=tmp_path / "out.mp4",
+                width=1920,
+                height=1080,
+                title="",
+                artist="",
+                crf=16,
+                preset="slow",
+                background=background,
+            )
+            args = render.build_parser().parse_args(cmd[2:])
+            assert args.background == background
+
+    def test_the_background_reaches_the_query_string(self, render):
+        url = render.build_url(9000, 1920, 1080, "T", "A", "artwork.png",
+                               background="nebula")
+        assert "bg=nebula" in url
+
+    def test_every_schema_background_has_a_module(self):
+        from app.schemas import BACKGROUNDS
+
+        registry = (REPO_ROOT / "viz" / "backgrounds" / "index.js").read_text(encoding="utf-8")
+        for background in BACKGROUNDS:
+            assert (REPO_ROOT / "viz" / "backgrounds" / f"{background}.js").exists(), background
+            assert f'from "./{background}.js"' in registry, background
+
+    def test_render_defaults_to_the_quietest_background(self, render):
+        assert render.build_parser().parse_args([]).background == "drift"
+
+
+class TestServiceContract:
+    """Streaming services are comma-separated on the CLI and one field per
+    pick on the form; both have to reach the same registry in viz/services.js."""
+
+    def test_render_accepts_a_comma_separated_list(self, render):
+        args = render.build_parser().parse_args(["--services", "spotify,apple,tidal"])
+        assert args.services == "spotify,apple,tidal"
+
+    def test_the_services_reach_the_query_string(self, render):
+        url = render.build_url(9000, 1920, 1080, "T", "A", "artwork.png",
+                               services="spotify,apple")
+        assert "services=spotify%2Capple" in url
+
+    def test_render_defaults_to_no_services(self, render):
+        assert render.build_parser().parse_args([]).services == ""
+
+    def test_every_schema_service_is_in_the_registry(self):
+        from app.schemas import SERVICES
+
+        registry = (REPO_ROOT / "viz" / "services.js").read_text(encoding="utf-8")
+        for service in SERVICES:
+            assert f"{service}:" in registry, service

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyPreset,
   ASPECTS,
+  BACKGROUNDS,
   LOOKS,
   DEFAULT_SETTINGS,
   dimensions,
@@ -10,8 +11,10 @@ import {
   OUTPUT_PRESETS,
   plannedOutputs,
   RESOLUTIONS,
+  SERVICES,
   toFormData,
   toggleAspect,
+  toggleService,
 } from "./settings";
 
 const image = new File([new Uint8Array([1, 2, 3])], "cover.png", { type: "image/png" });
@@ -258,7 +261,7 @@ describe("looks", () => {
   it("offers exactly the ones the pipeline registers", () => {
     // must stay in step with viz/looks/index.js and schemas.LOOKS — a look in
     // the picker that the renderer does not know produces a blank video
-    expect(LOOKS.map((l) => l.id)).toEqual(["burn", "orbit", "shear", "refract"]);
+    expect(LOOKS.map((l) => l.id)).toEqual(["burn", "orbit", "shear", "refract", "tide"]);
   });
 
   it("names and describes each one for the picker", () => {
@@ -283,5 +286,105 @@ describe("looks", () => {
     const preset = OUTPUT_PRESETS[2];
     expect(applyPreset({ ...DEFAULT_SETTINGS, look: "shear" }, preset).look).toBe("shear");
     expect(matchPreset({ ...DEFAULT_SETTINGS, look: "shear" })).toBe("deliver");
+  });
+});
+
+describe("backgrounds", () => {
+  it("offers exactly the ones the pipeline registers", () => {
+    // must stay in step with viz/backgrounds/index.js and schemas.BACKGROUNDS
+    expect(BACKGROUNDS.map((b) => b.id)).toEqual([
+      "drift",
+      "nebula",
+      "rays",
+      "dust",
+      "grid",
+    ]);
+  });
+
+  it("names and describes each one for the picker", () => {
+    for (const bg of BACKGROUNDS) {
+      expect(bg.name.length).toBeGreaterThan(0);
+      expect(bg.note.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("opens on the quietest background, so an existing render changes least", () => {
+    expect(DEFAULT_SETTINGS.background).toBe("drift");
+  });
+
+  it("sends the background with the job", () => {
+    const form = toFormData({ ...DEFAULT_SETTINGS, background: "grid" }, image, audio);
+    expect(form.get("background")).toBe("grid");
+  });
+
+  it("keeps the background out of the output presets, for every preset", () => {
+    for (const preset of OUTPUT_PRESETS) {
+      const next = applyPreset({ ...DEFAULT_SETTINGS, background: "nebula" }, preset);
+      expect(next.background).toBe("nebula");
+    }
+  });
+});
+
+describe("services", () => {
+  it("offers exactly the ones the renderer registers", () => {
+    // must stay in step with viz/services.js and schemas.SERVICES
+    expect(SERVICES.map((s) => s.id)).toEqual([
+      "spotify",
+      "apple",
+      "youtube",
+      "soundcloud",
+      "bandcamp",
+      "tidal",
+      "deezer",
+      "amazon",
+    ]);
+  });
+
+  it("names each one for the picker", () => {
+    for (const svc of SERVICES) {
+      expect(svc.name.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("starts with nothing picked", () => {
+    expect(DEFAULT_SETTINGS.services).toEqual([]);
+  });
+
+  it("sends one field per picked service, which is how the server reads a list", () => {
+    const form = toFormData(
+      { ...DEFAULT_SETTINGS, services: ["apple", "spotify"] },
+      image,
+      audio,
+    );
+    expect(form.getAll("services")).toEqual(["apple", "spotify"]);
+  });
+
+  it("sends nothing when no service is picked", () => {
+    const form = toFormData(DEFAULT_SETTINGS, image, audio);
+    expect(form.getAll("services")).toEqual([]);
+  });
+
+  it("keeps services out of the output presets, for every preset", () => {
+    const picked = { ...DEFAULT_SETTINGS, services: ["tidal", "deezer"] };
+    for (const preset of OUTPUT_PRESETS) {
+      expect(applyPreset(picked, preset).services).toEqual(["tidal", "deezer"]);
+    }
+  });
+
+  describe("toggleService", () => {
+    it("adds a service that was off", () => {
+      expect(toggleService(DEFAULT_SETTINGS, "spotify")).toEqual(["spotify"]);
+    });
+
+    it("removes a service that was on", () => {
+      const on = { ...DEFAULT_SETTINGS, services: ["spotify", "apple"] };
+      expect(toggleService(on, "spotify")).toEqual(["apple"]);
+    });
+
+    it("keeps registry order regardless of click order", () => {
+      const start = { ...DEFAULT_SETTINGS, services: ["amazon"] };
+      // amazon was clicked first, spotify second — spotify still comes first
+      expect(toggleService(start, "spotify")).toEqual(["spotify", "amazon"]);
+    });
   });
 });

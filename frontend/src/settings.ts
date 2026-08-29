@@ -14,6 +14,10 @@ export interface RenderSettings {
   hpss: boolean;
   /** which design viz/looks draws; see LOOKS below */
   look: string;
+  /** the field the look draws on; see BACKGROUNDS below */
+  background: string;
+  /** where the track can be streamed, badged into the frame; see SERVICES below */
+  services: string[];
   previewEnabled: boolean;
   previewStart: number;
   previewEnd: number;
@@ -30,6 +34,8 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   bands: 24,
   hpss: true,
   look: "burn",
+  background: "drift",
+  services: [],
   previewEnabled: false,
   previewStart: 30,
   previewEnd: 45,
@@ -138,6 +144,10 @@ export function toFormData(
   form.append("bands", String(settings.bands));
   form.append("hpss", settings.hpss ? "true" : "false");
   form.append("look", settings.look);
+  form.append("background", settings.background);
+  for (const service of settings.services) {
+    form.append("services", service);
+  }
   if (settings.previewEnabled) {
     form.append("preview_start", String(settings.previewStart));
     form.append("preview_end", String(settings.previewEnd));
@@ -252,4 +262,75 @@ export const LOOKS: Look[] = [
     name: "Refract",
     note: "the cover through moving glass, over a living background — best with a GPU",
   },
+  {
+    id: "tide",
+    name: "Tide",
+    note: "the cover above a horizon, reflected in moving water below it",
+  },
 ];
+
+export interface Background {
+  id: string;
+  name: string;
+  /** One line for the picker: what it does, not how. */
+  note: string;
+}
+
+/** Must stay in step with viz/backgrounds/index.js and schemas.BACKGROUNDS.
+ *  A backend test asserts every id here has a registered module. */
+export const BACKGROUNDS: Background[] = [
+  {
+    id: "drift",
+    name: "Drift",
+    note: "soft diagonal bands, sliding — the quietest of the five",
+  },
+  {
+    id: "nebula",
+    name: "Nebula",
+    note: "four glows, orbiting slowly behind everything",
+  },
+  {
+    id: "rays",
+    name: "Rays",
+    note: "light from behind the cover, turning with the bar",
+  },
+  {
+    id: "dust",
+    name: "Dust",
+    note: "three layers of drifting specks, each at its own pace",
+  },
+  {
+    id: "grid",
+    name: "Grid",
+    note: "a perspective floor, receding to a horizon on the beat",
+  },
+];
+
+export interface Service {
+  id: string;
+  name: string;
+}
+
+/** Must stay in step with viz/services.js and schemas.SERVICES. Order is the
+ *  order the picker shows them in and the order the badge row draws them,
+ *  regardless of click order. */
+export const SERVICES: Service[] = [
+  { id: "spotify", name: "Spotify" },
+  { id: "apple", name: "Apple Music" },
+  { id: "youtube", name: "YouTube" },
+  { id: "soundcloud", name: "SoundCloud" },
+  { id: "bandcamp", name: "Bandcamp" },
+  { id: "tidal", name: "Tidal" },
+  { id: "deezer", name: "Deezer" },
+  { id: "amazon", name: "Amazon Music" },
+];
+
+/** Adding or dropping a service, in registry order rather than click order —
+ *  the badge row must be stable regardless of how the picker was clicked. */
+export function toggleService(settings: RenderSettings, id: string): string[] {
+  const on = settings.services.includes(id);
+  const next = on
+    ? settings.services.filter((s) => s !== id)
+    : [...settings.services, id];
+  return SERVICES.map((s) => s.id).filter((sid) => next.includes(sid));
+}

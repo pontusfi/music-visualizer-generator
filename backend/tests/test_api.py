@@ -288,3 +288,39 @@ class TestEveryParamSurvivesTheForm:
 
     def test_omitting_the_look_still_works(self, client):
         assert upload(client).json()["params"]["look"] == "burn"
+
+    def test_the_background_reaches_the_job(self, client):
+        r = upload(client, background="nebula")
+        assert r.status_code == 201, r.text
+        assert r.json()["params"]["background"] == "nebula"
+
+    def test_each_background_reaches_the_job_distinctly(self, client):
+        from app.schemas import BACKGROUNDS
+
+        for background in BACKGROUNDS:
+            body = upload(client, background=background).json()
+            assert body["params"]["background"] == background
+
+    def test_an_unknown_background_is_refused_rather_than_silently_defaulted(self, client):
+        r = upload(client, background="starfield")
+        assert r.status_code == 422
+        assert "background" in r.text.lower()
+
+    def test_omitting_the_background_still_works(self, client):
+        assert upload(client).json()["params"]["background"] == "drift"
+
+    def test_services_round_trip_as_a_list(self, client):
+        body = upload(client, services=["spotify", "apple"]).json()
+        assert body["params"]["services"] == ["spotify", "apple"]
+
+    def test_an_unknown_service_is_refused(self, client):
+        r = upload(client, services=["spotify", "napster"])
+        assert r.status_code == 422
+        assert "services" in r.text.lower()
+
+    def test_a_duplicate_service_is_refused(self, client):
+        r = upload(client, services=["spotify", "spotify"])
+        assert r.status_code == 422
+
+    def test_omitting_services_leaves_the_list_empty(self, client):
+        assert upload(client).json()["params"]["services"] == []

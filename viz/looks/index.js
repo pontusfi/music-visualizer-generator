@@ -10,12 +10,14 @@ import * as burn from "./burn.js";
 import * as orbit from "./orbit.js";
 import * as refract from "./refract.js";
 import * as shear from "./shear.js";
+import * as tide from "./tide.js";
 
 export const LOOKS = {
   [burn.id]: burn,
   [orbit.id]: orbit,
   [refract.id]: refract,
   [shear.id]: shear,
+  [tide.id]: tide,
 };
 
 export const DEFAULT_LOOK = burn.id;

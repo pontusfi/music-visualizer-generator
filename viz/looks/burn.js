@@ -9,6 +9,7 @@
  * threshold crossing.
  */
 
+import { drawCredit } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
 import { decay } from "../signals.js";
 
@@ -34,8 +35,7 @@ export function draw(ctx, sig, a) {
   const emberRgb = shiftHue(palette.ember, (s.hue - 0.5) * HUE_SPREAD * s.tonal);
   const ember = css(emberRgb);
 
-  ctx.fillStyle = palette.groundCss;
-  ctx.fillRect(0, 0, W, H);
+  a.bg.draw(ctx, s, a);
 
   // --- composition --------------------------------------------------------
   // Each section gets its own resting size and drift, so a chorus does not sit
@@ -117,18 +117,7 @@ export function draw(ctx, sig, a) {
   }
 
   // --- credit line --------------------------------------------------------
-  if (a.artist || a.title) {
-    ctx.font = `${Math.round(unit * 0.0135)}px Display, "Oswald", "Helvetica Neue Condensed", sans-serif`;
-    ctx.fillStyle = palette.boneCss;
-    ctx.letterSpacing = `${Math.round(unit * 0.006)}px`;
-    ctx.textBaseline = "alphabetic";
-    ctx.globalAlpha = 0.30 + s.crack * 0.25;
-    ctx.fillText(a.artist.toUpperCase(), x, y - unit * 0.028);
-    ctx.globalAlpha = 0.62 + s.crack * 0.30;
-    ctx.fillText(a.title.toUpperCase(), x, y - unit * 0.010);
-    ctx.globalAlpha = 1;
-    ctx.letterSpacing = "0px";
-  }
+  drawCredit(ctx, s, a, { x, y: y - unit * 0.020, align: "left" });
 
   // --- grain and vignette -------------------------------------------------
   ctx.globalCompositeOperation = "overlay";

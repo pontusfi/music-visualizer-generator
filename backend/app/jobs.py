@@ -350,6 +350,8 @@ class JobManager:
                         crf=p.crf,
                         preset=p.preset,
                         look=p.look,
+                        background=p.background,
+                        services=p.services,
                         preview=p.preview_range(),
                     ),
                 )

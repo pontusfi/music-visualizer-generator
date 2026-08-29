@@ -1,5 +1,18 @@
 import { mulberry32 } from "./signals";
 
+/**
+ * Mirrors `CREDIT.artist` / `CREDIT.title` in viz/credit.js — the render's own
+ * shared credit renderer. The preview cannot import that module directly (the
+ * frontend's Docker build has no access to the repo's viz/ directory), so the
+ * two numbers are duplicated here instead of shared; paint.test.ts pins them
+ * against viz/credit.js so this copy cannot silently drift from what the
+ * render actually draws, the way it did before.
+ */
+export const CREDIT_RATIO = {
+  artist: 0.026,
+  title: 0.052,
+};
+
 export interface Signals {
   kick: number;
   crack: number;
@@ -133,10 +146,10 @@ export function drawStage(canvas: HTMLCanvasElement, o: StageOptions): void {
     ctx.textBaseline = "alphabetic";
     setTracking(ctx, `${unit * 0.006}px`);
     ctx.fillStyle = o.accent;
-    ctx.font = `600 ${unit * 0.036}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+    ctx.font = `600 ${unit * CREDIT_RATIO.artist}px "Barlow Condensed", "Arial Narrow", sans-serif`;
     ctx.fillText(artist, pad, h - unit * 0.155);
     ctx.fillStyle = "#f2f0ec";
-    ctx.font = `700 ${unit * 0.078}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+    ctx.font = `700 ${unit * CREDIT_RATIO.title}px "Barlow Condensed", "Arial Narrow", sans-serif`;
     ctx.fillText(title, pad, h - unit * 0.075);
     setTracking(ctx, "0px");
   }

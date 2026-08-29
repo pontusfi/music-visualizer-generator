@@ -737,6 +737,198 @@ body {
   border-color: var(--acc);
 }
 
+/* tide: a horizon with a rippled reflection below it */
+.look__glyph--tide::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 5px;
+  height: 6px;
+  background: #2a2a30;
+}
+
+.look__glyph--tide::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 12px;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, #2a2a30 0 3px, transparent 3px 5px);
+}
+
+.look--on .look__glyph--tide::before {
+  background: var(--acc);
+  box-shadow: 0 0 6px var(--acc);
+}
+
+.look--on .look__glyph--tide::after {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--acc) 0 3px,
+    transparent 3px 5px
+  );
+}
+
+/* ── background picker ───────────────────────────────────────────────── */
+/* shares .looks / .look / .look__body / .look__name / .look__note with the
+   look picker — only the glyph differs, so BackgroundPanel reuses them */
+.bg__glyph {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  position: relative;
+  border: 1px solid #2a2a30;
+  opacity: 0.75;
+  overflow: hidden;
+}
+
+.look--on .bg__glyph {
+  border-color: var(--acc);
+  opacity: 1;
+}
+
+/* drift: diagonal bands */
+.bg__glyph--drift {
+  background: repeating-linear-gradient(
+    115deg,
+    #2a2a30 0 4px,
+    transparent 4px 9px
+  );
+}
+
+.look--on .bg__glyph--drift {
+  background: repeating-linear-gradient(
+    115deg,
+    var(--acc) 0 4px,
+    transparent 4px 9px
+  );
+}
+
+/* nebula: four soft glows */
+.bg__glyph--nebula::before,
+.bg__glyph--nebula::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  background: #2a2a30;
+  filter: blur(1px);
+}
+
+.bg__glyph--nebula::before {
+  top: 2px;
+  left: 3px;
+}
+
+.bg__glyph--nebula::after {
+  bottom: 2px;
+  right: 3px;
+}
+
+.look--on .bg__glyph--nebula::before,
+.look--on .bg__glyph--nebula::after {
+  background: var(--acc);
+}
+
+/* rays: a starburst */
+.bg__glyph--rays {
+  border-radius: 99px;
+  background: repeating-conic-gradient(
+    #2a2a30 0deg 12deg,
+    transparent 12deg 30deg
+  );
+}
+
+.look--on .bg__glyph--rays {
+  background: repeating-conic-gradient(
+    var(--acc) 0deg 12deg,
+    transparent 12deg 30deg
+  );
+}
+
+/* dust: scattered specks */
+.bg__glyph--dust {
+  background-image: radial-gradient(circle, #2a2a30 1.2px, transparent 1.2px);
+  background-size: 6px 6px;
+  background-position: 0 0, 3px 4px;
+}
+
+.look--on .bg__glyph--dust {
+  background-image: radial-gradient(circle, var(--acc) 1.2px, transparent 1.2px);
+}
+
+/* grid: a receding floor */
+.bg__glyph--grid {
+  background:
+    linear-gradient(#2a2a30 1px, transparent 1px) 0 4px / 100% 6px,
+    linear-gradient(90deg, transparent 45%, #2a2a30 45% 55%, transparent 55%) 0 0 /
+      100% 100%;
+}
+
+.look--on .bg__glyph--grid {
+  background:
+    linear-gradient(var(--acc) 1px, transparent 1px) 0 4px / 100% 6px,
+    linear-gradient(90deg, transparent 45%, var(--acc) 45% 55%, transparent 55%) 0 0 /
+      100% 100%;
+}
+
+/* ── streaming service marks ─────────────────────────────────────────── */
+.svc__mark {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+  background: #3a3a40;
+  border-radius: 3px;
+}
+
+.cell--on .svc__mark {
+  background: var(--acc);
+}
+
+.svc__mark--spotify {
+  border-radius: 99px;
+}
+
+.svc__mark--apple {
+  border-radius: 30% 70% 65% 35% / 35% 35% 65% 65%;
+}
+
+.svc__mark--youtube {
+  border-radius: 4px;
+}
+
+.svc__mark--soundcloud {
+  clip-path: polygon(0 100%, 15% 45%, 30% 75%, 45% 20%, 60% 65%, 75% 35%, 100% 0, 100% 100%);
+}
+
+.svc__mark--bandcamp {
+  border-radius: 0;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.svc__mark--tidal {
+  border-radius: 2px;
+  transform: rotate(45deg) scale(0.72);
+}
+
+.svc__mark--deezer {
+  clip-path: polygon(
+    0 100%, 22% 100%, 22% 55%, 0 55%,
+    30% 100%, 52% 100%, 52% 30%, 30% 30%,
+    60% 100%, 82% 100%, 82% 10%, 60% 10%
+  );
+}
+
+.svc__mark--amazon {
+  border-radius: 99px 99px 20% 20%;
+}
+
 /* ── advanced ─────────────────────────────────────────────────────────── */
 .grid {
   display: grid;

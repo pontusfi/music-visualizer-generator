@@ -221,6 +221,29 @@ class TestFfmpegCommandShape:
         assert "-y" in _cmd()
 
 
+class TestBuildUrlBackgroundAndServices:
+    """`--background` and `--services` follow the same query-string path
+    `--look` does, all the way from render.py's own CLI flags."""
+
+    def test_carries_the_background(self):
+        url = render.build_url(8000, 1920, 1080, "T", "A", "artwork.png",
+                               background="nebula")
+        assert "bg=nebula" in url
+
+    def test_defaults_the_background_to_drift(self):
+        url = render.build_url(8000, 1920, 1080, "T", "A", "artwork.png")
+        assert "bg=drift" in url
+
+    def test_carries_services_percent_encoded(self):
+        url = render.build_url(8000, 1920, 1080, "T", "A", "artwork.png",
+                               services="spotify,apple")
+        assert "services=spotify%2Capple" in url
+
+    def test_defaults_to_no_services(self):
+        url = render.build_url(8000, 1920, 1080, "T", "A", "artwork.png")
+        assert "services=" in url
+
+
 class TestLaunchArgs:
     """The Chromium flags that decide what the pixels come out as.
 
@@ -299,14 +322,17 @@ class TestDescribeRenderer:
 
 
 class TestGpuCaution:
-    """Which looks are not bit-reproducible under GPU rasterization.
+    """Which looks and backgrounds are not bit-reproducible under GPU
+    rasterization.
 
     Measured, not guessed. On this host's RTX 4060 Ti, Chromium's accelerated
     2D canvas carries state between draws: rendering frame 150 of Shear four
     times running settles on one image, and rendering 149 before each 150 gives
     a different one — permanently, not as a warm-up. Orbit does the same thing
     at a max channel delta of 3; Shear reaches 121 across 12% of the frame.
-    Burn and Refract are identical either way.
+    Burn, Refract and Tide are identical either way. Grid has the same hazard
+    as a background, independent of which look draws over it; Drift, Nebula,
+    Rays and Dust measured clean.
 
     The render is still correct and still reproducible against itself in a
     single sequential pass. What it is not is comparable across draw orders,
@@ -318,8 +344,10 @@ class TestGpuCaution:
         # software raster is exact for every look; the whole issue is the flag
         for look in render.GPU_UNSTABLE_LOOKS:
             assert render.gpu_caution(look, gpu=False) is None
+        for background in render.GPU_UNSTABLE_BACKGROUNDS:
+            assert render.gpu_caution("burn", gpu=False, background=background) is None
 
-    @pytest.mark.parametrize("look", ["burn", "refract"])
+    @pytest.mark.parametrize("look", ["burn", "refract", "tide"])
     def test_the_stable_looks_say_nothing(self, look):
         assert render.gpu_caution(look, gpu=True) is None
 
@@ -327,6 +355,27 @@ class TestGpuCaution:
     def test_the_unstable_looks_are_named(self, look):
         msg = render.gpu_caution(look, gpu=True)
         assert msg is not None and look in msg
+
+    @pytest.mark.parametrize("background", ["drift", "nebula", "rays", "dust"])
+    def test_the_stable_backgrounds_say_nothing(self, background):
+        assert render.gpu_caution("burn", gpu=True, background=background) is None
+
+    def test_the_unstable_background_is_named(self):
+        msg = render.gpu_caution("burn", gpu=True, background="grid")
+        assert msg is not None and "grid" in msg
+
+    def test_an_unstable_look_over_a_stable_background_still_warns(self):
+        msg = render.gpu_caution("shear", gpu=True, background="drift")
+        assert msg is not None and "shear" in msg
+
+    def test_a_stable_look_over_an_unstable_background_still_warns(self):
+        msg = render.gpu_caution("burn", gpu=True, background="grid")
+        assert msg is not None and "grid" in msg
+
+    def test_both_at_once_name_both(self):
+        msg = render.gpu_caution("shear", gpu=True, background="grid")
+        assert msg is not None
+        assert "shear" in msg and "grid" in msg
 
     def test_the_message_says_what_is_actually_at_risk(self):
         # not "wrong output" — the frames are fine, they just stop being
@@ -337,3 +386,6 @@ class TestGpuCaution:
     def test_an_unknown_look_is_not_warned_about(self):
         # --look is validated elsewhere; guessing here would be noise
         assert render.gpu_caution("kaleidoscope", gpu=True) is None
+
+    def test_an_unknown_background_is_not_warned_about(self):
+        assert render.gpu_caution("burn", gpu=True, background="starfield") is None
