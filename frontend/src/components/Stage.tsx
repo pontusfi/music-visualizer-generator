@@ -2,8 +2,10 @@ import { type RefObject, useState } from "react";
 
 import { videoUrl } from "../api";
 import { formatClock } from "../format";
+import { DEFAULT_GAIN, type Gain } from "../player/controls";
 import { type Aspect, plannedOutputs, type RenderSettings } from "../settings";
 import type { Job } from "../types";
+import { Player } from "./Player";
 
 interface Props {
   stageRef: RefObject<HTMLCanvasElement | null>;
@@ -12,6 +14,8 @@ interface Props {
   hasCover: boolean;
   playing: boolean;
   job: Job | null;
+  /** Stops the source monitor when the result starts, so one song plays at a time. */
+  onPlay?: () => void;
 }
 
 /** What the stage is showing: the aspects a finished job actually produced,
@@ -38,8 +42,11 @@ export function Stage({
   hasCover,
   playing,
   job,
+  onPlay,
 }: Props) {
   const [chosen, setChosen] = useState<Aspect | null>(null);
+  // above the key= boundary below, or switching aspect resets the volume
+  const [gain, setGain] = useState<Gain>(DEFAULT_GAIN);
 
   const outputs = shownOutputs(settings, job);
   // the choice is a preference, not a source of truth: unticking an aspect, or
@@ -120,14 +127,14 @@ export function Stage({
           style={{ aspectRatio: `${active.width} / ${active.height}` }}
         >
           {done && job ? (
-            <video
+            <Player
               // a fresh element per aspect, or the browser keeps the old frames
               key={active.variant}
-              className="stage__video"
               src={videoUrl(job.id, active.variant)}
-              controls
-              autoPlay
-              playsInline
+              downloadUrl={videoUrl(job.id, active.variant, true)}
+              gain={gain}
+              onGain={setGain}
+              onPlay={onPlay}
             />
           ) : (
             <canvas ref={stageRef} />

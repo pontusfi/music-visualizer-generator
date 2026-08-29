@@ -936,16 +936,10 @@ body {
   border-color: var(--acc);
 }
 
-.stage__canvas canvas,
-.stage__video {
+.stage__canvas canvas {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.stage__video {
-  object-fit: contain;
-  background: #000;
 }
 
 .stage__empty,
@@ -1017,6 +1011,332 @@ body {
   font: 400 13px/1.5 var(--sans);
   color: var(--dim);
   max-width: 46ch;
+}
+
+/* ── player ───────────────────────────────────────────────────────────── */
+/* The result player. Native controls are off; everything below is built from
+   the same parts as the transport under the stage. The strip lives INSIDE the
+   frame because .stage__canvas is cut to the video's ratio and has no height
+   to spare — see the note above it — so it covers picture, and earns that by
+   leaving when the pointer goes quiet. */
+.player {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  container-type: inline-size;
+  outline: none;
+}
+
+.player__video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+/* some builds put the native bar back on a right-click */
+.player__video::-webkit-media-controls {
+  display: none !important;
+}
+
+.player--idle .player__video {
+  cursor: none;
+}
+
+.player__chrome {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 10px;
+  background: rgba(13, 13, 15, 0.92);
+  border-top: 1px solid var(--line);
+  transition: opacity 0.15s;
+}
+
+.player__chrome--off {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player:fullscreen {
+  width: 100%;
+  height: 100%;
+}
+
+.player:fullscreen .player__chrome {
+  padding: 12px 22px 16px;
+}
+
+/* ---- the scrub ---- */
+.player__scrub {
+  position: relative;
+  height: 22px;
+  padding: 8px 0;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* not --well: the strip behind it is already that dark, and the empty end of
+   the bar would have nothing to show for itself */
+.player__rail {
+  position: relative;
+  height: 6px;
+  background: #1c1c21;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.player__buffered {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--line2);
+}
+
+/* no transition on the width: .track__fill eases because a render creeps
+   forward, but a playhead that eases lags the picture */
+.player__played {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--acc);
+  border-radius: 99px;
+}
+
+.player__head {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  background: var(--acc);
+  transform: translate(-50%, -50%) rotate(45deg);
+  pointer-events: none;
+  transition: width 0.15s, height 0.15s;
+}
+
+.player__scrub:hover .player__head,
+.player__scrub--on .player__head {
+  width: 11px;
+  height: 11px;
+}
+
+.player__ghost {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--line2);
+  pointer-events: none;
+}
+
+.player__tip {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  font: 400 10px/1 var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--ink);
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ---- the row ---- */
+.player__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.player__spacer {
+  flex: 1;
+}
+
+/* the transport's play key, reused for every control here */
+.player__key {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 3px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 500 11px/1 var(--mono);
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.player__key:hover {
+  border-color: var(--ink);
+}
+
+.player__key--on {
+  border-color: var(--acc);
+  color: var(--acc);
+}
+
+.player__clock {
+  flex: none;
+  font: 500 12px/1 var(--mono);
+  color: var(--ink);
+}
+
+.player__clock--dim {
+  color: var(--faint);
+}
+
+.player__pipe {
+  color: #3a3a3f;
+  font: 400 11px/1 var(--mono);
+}
+
+.player__volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.player__gain {
+  width: 74px;
+  accent-color: var(--acc);
+  cursor: pointer;
+}
+
+/* a 9:16 cut leaves no room for the slider; the mute key still covers it */
+@container (max-width: 420px) {
+  .player__gain {
+    display: none;
+  }
+}
+
+/* ---- the marks, drawn the way the look glyphs are ---- */
+.player__glyph {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* volume: a signal ladder that doubles as the level, so it reads without
+   going near the slider */
+.player__rung {
+  position: absolute;
+  bottom: 1px;
+  width: 2px;
+  background: #2a2a30;
+}
+
+.player__rung--on {
+  background: var(--acc);
+}
+
+.player__rung:nth-child(1) {
+  left: 1px;
+  height: 4px;
+}
+
+.player__rung:nth-child(2) {
+  left: 5px;
+  height: 8px;
+}
+
+.player__rung:nth-child(3) {
+  left: 9px;
+  height: 12px;
+}
+
+.player__glyph--mute::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 6px;
+  width: 18px;
+  height: 1px;
+  background: var(--faint);
+  transform: rotate(-45deg);
+}
+
+/* full screen: two corner brackets, turned inward on the way out */
+.player__glyph--full::before,
+.player__glyph--full::after {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 5px;
+}
+
+.player__glyph--full::before {
+  left: 0;
+  top: 0;
+  border-top: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+}
+
+.player__glyph--full::after {
+  right: 0;
+  bottom: 0;
+  border-bottom: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+
+.player__glyph--full-exit::before {
+  border-top: 0;
+  border-left: 0;
+  border-bottom: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+
+.player__glyph--full-exit::after {
+  border-bottom: 0;
+  border-right: 0;
+  border-top: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+}
+
+/* download: a shaft into a tray, with the rotated square the mark and the
+   empty-state diamond already use */
+.player__glyph--down {
+  border-bottom: 1px solid currentColor;
+}
+
+.player__glyph--down::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  margin-left: -0.5px;
+  width: 1px;
+  height: 8px;
+  background: currentColor;
+}
+
+.player__glyph--down::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  margin-left: -3px;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg);
 }
 
 /* ── meters + transport ───────────────────────────────────────────────── */

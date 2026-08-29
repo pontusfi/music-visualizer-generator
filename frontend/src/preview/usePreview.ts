@@ -37,6 +37,9 @@ export interface Preview {
   playing: boolean;
   now: number;
   togglePlay: () => void;
+  /** Stops the monitor outright. The result player calls this when it starts,
+   *  so the source and the mp4 are never playing over each other. */
+  pause: () => void;
   seek: (fraction: number) => void;
 }
 
@@ -194,6 +197,10 @@ export function usePreview(input: PreviewInput): Preview {
     }
   }, [ensureGraph]);
 
+  const pause = useCallback(() => {
+    audioRef.current?.pause();
+  }, []);
+
   const seek = useCallback((fraction: number) => {
     const el = audioRef.current;
     const duration = live.current.duration;
@@ -306,6 +313,7 @@ export function usePreview(input: PreviewInput): Preview {
     playing,
     now,
     togglePlay,
+    pause,
     seek,
   };
 }

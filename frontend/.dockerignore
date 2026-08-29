@@ -1,2 +1,8 @@
 node_modules
 dist
+
+# Fixtures for harness.html, the design bench for the player. vite copies
+# public/ into dist verbatim, so without this the nginx image ships ~19 MB of
+# sample video to every visitor. Gitignored too (*.mp4), so a fresh clone
+# never has them in the first place.
+public/sample-*.mp4

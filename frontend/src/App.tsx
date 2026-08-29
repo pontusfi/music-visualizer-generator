@@ -274,6 +274,7 @@ export default function App() {
             hasCover={image !== null}
             playing={preview.playing}
             job={job}
+            onPlay={preview.pause}
           />
           <Transport
             metersRef={preview.metersRef}

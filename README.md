@@ -104,6 +104,26 @@ librosa and Playwright out of the web worker. `backend/tests/test_stage_scripts.
 parses the exact commands the server builds with the scripts' real argument
 parsers, so a flag rename fails in CI rather than half an hour into a render.
 
+### The player bench
+
+The result player draws its own chrome — no native controls, because stock
+browser UI took none of its colour from the cover. `frontend/harness.html`
+mounts it on its own so the strip can be worked on without sitting through a
+render first:
+
+```bash
+cd frontend && npm run dev     # then open /harness.html
+```
+
+It plays `public/sample-wide.mp4` and `public/sample-tall.mp4`: any two clips,
+one of each shape. Both are gitignored (`*.mp4`), so a fresh clone shows a blank
+frame until you drop two in, and `frontend/.dockerignore` keeps them out of the
+image — vite copies `public/` into `dist/` verbatim and says nothing about it,
+which is how 19 MB of sample video nearly shipped to every visitor.
+
+The 9:16 tab is the one worth checking: a narrow cut is where the volume slider
+drops out of the row and the mute key has to carry the level on its own.
+
 ## Command line
 
 ### Setup
