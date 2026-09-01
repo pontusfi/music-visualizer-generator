@@ -20,6 +20,32 @@ export const CREDIT = {
   trackTitle: 0.004,
 };
 
+/**
+ * The widest a credit line may run, as a share of the frame width.
+ *
+ * Not of `unit`: this is the one measurement that has to be taken against the
+ * edge the type can actually run off. At 16:9 a title sized off the short edge
+ * has the long edge to spread along and never troubles it; at 9:16 the short
+ * edge *is* the width, and a long title ran straight past the frame.
+ */
+export const CREDIT_FIT = 0.86;
+
+/**
+ * A font size at which `text` fits inside `maxWidth`, never larger than `size`.
+ *
+ * Measured with the real context, so the actual face and whatever letter
+ * spacing is currently set are both accounted for — set `ctx.letterSpacing`
+ * before calling, not after. Returns `size` untouched when the line already
+ * fits, so a short title keeps the size the look designed for it.
+ */
+export function fitSize(ctx, text, font, size, maxWidth) {
+  if (!text || !(maxWidth > 0)) return size;
+  ctx.font = `${Math.round(size)}px ${font}`;
+  const width = ctx.measureText(text).width;
+  if (!(width > maxWidth)) return size;
+  return Math.max(1, Math.floor(size * (maxWidth / width)));
+}
+
 /** Gap between the artist and title baselines, and the plate's own padding.
  *  All in shares of `unit`. */
 const LINE_GAP = 0.030;

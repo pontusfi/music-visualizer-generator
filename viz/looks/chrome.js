@@ -11,7 +11,7 @@
  * feedback buffer anywhere, so any frame can be drawn on its own.
  */
 
-import { CREDIT, creditAlpha } from "../credit.js";
+import { CREDIT, CREDIT_FIT, creditAlpha, fitSize } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
 import { creditFloor } from "../services.js";
 
@@ -111,6 +111,7 @@ export function draw(ctx, s, a) {
   const titleSize = Math.round(unit * CREDIT.title * 1.06);
   const artistSize = Math.round(unit * CREDIT.artist * 0.9);
   const cx = x + w / 2;
+  const maxTextW = W * CREDIT_FIT;
   // held above the badge row when any service is picked: the row is drawn
   // after the look and owns the bottom of the frame
   const titleY = Math.min(H - unit * 0.062, creditFloor(a));
@@ -119,16 +120,16 @@ export function draw(ctx, s, a) {
   ctx.textBaseline = "alphabetic";
 
   if (a.artist) {
-    ctx.font = `${artistSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * 0.024)}px`;
+    ctx.font = `${fitSize(ctx, a.artist.toUpperCase(), FONT, artistSize, maxTextW)}px ${FONT}`;
     ctx.fillStyle = ember;
     ctx.globalAlpha = alpha.artist;
     ctx.fillText(a.artist.toUpperCase(), cx, titleY - titleSize * 0.92);
   }
 
   if (a.title) {
-    ctx.font = `${titleSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * CREDIT.trackTitle)}px`;
+    ctx.font = `${fitSize(ctx, a.title.toUpperCase(), FONT, titleSize, maxTextW)}px ${FONT}`;
     const top = titleY - titleSize * 0.78;
     const ramp = ctx.createLinearGradient(0, top, 0, titleY + titleSize * 0.12);
     ramp.addColorStop(0.00, bone);

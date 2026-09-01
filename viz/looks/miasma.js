@@ -13,7 +13,7 @@
 
 import { off } from "../assets.js";
 import { blobSheet, scroll } from "../fields.js";
-import { CREDIT, creditAlpha } from "../credit.js";
+import { CREDIT, CREDIT_FIT, creditAlpha, fitSize } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
 import { creditFloor } from "../services.js";
 import { decay } from "../signals.js";
@@ -126,6 +126,7 @@ export function draw(ctx, s, a) {
   const titleSize = Math.round(unit * CREDIT.title);
   const artistSize = Math.round(unit * CREDIT.artist * 0.9);
   const cx = x + w / 2;
+  const maxTextW = W * CREDIT_FIT;
   // held above the badge row when any service is picked: the row is drawn
   // after the look and owns the bottom of the frame
   const titleY = Math.min(H - unit * 0.07, y + h + unit * 0.12, creditFloor(a));
@@ -135,16 +136,16 @@ export function draw(ctx, s, a) {
   ctx.textBaseline = "alphabetic";
 
   if (a.artist) {
-    ctx.font = `${artistSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * 0.030)}px`;
+    ctx.font = `${fitSize(ctx, a.artist.toUpperCase(), FONT, artistSize, maxTextW)}px ${FONT}`;
     ctx.fillStyle = ember;
     ctx.globalAlpha = alpha.artist * veil;
     ctx.fillText(a.artist.toUpperCase(), cx, titleY - titleSize * 0.95);
   }
 
   if (a.title) {
-    ctx.font = `${titleSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * CREDIT.trackTitle * 2)}px`;
+    ctx.font = `${fitSize(ctx, a.title.toUpperCase(), FONT, titleSize, maxTextW)}px ${FONT}`;
     // three passes, each a little offset — the type is in the smoke, not on it
     ctx.fillStyle = bone;
     ctx.globalAlpha = alpha.title * veil * 0.35;

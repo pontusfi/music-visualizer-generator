@@ -12,7 +12,7 @@
  */
 
 import { off } from "../assets.js";
-import { CREDIT, creditAlpha } from "../credit.js";
+import { CREDIT, CREDIT_FIT, creditAlpha, fitSize } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
 import { creditFloor } from "../services.js";
 
@@ -197,6 +197,9 @@ export function draw(ctx, s, a) {
   const titleSize = Math.round(unit * CREDIT.title * 1.1);
   const artistSize = Math.round(unit * CREDIT.artist);
   const left = Math.max(unit * 0.06, x);
+  // left-aligned, so what it has to fit into is whatever the frame has left of
+  // that anchor rather than the full width
+  const maxTextW = Math.min(W * CREDIT_FIT, W - left - unit * 0.04);
   // held above the badge row when any service is picked: the row is drawn
   // after the look and owns the bottom of the frame
   const titleY = Math.min(H - unit * 0.070, creditFloor(a));
@@ -206,16 +209,16 @@ export function draw(ctx, s, a) {
   ctx.textBaseline = "alphabetic";
 
   if (a.artist) {
-    ctx.font = `${artistSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * 0.018)}px`;
+    ctx.font = `${fitSize(ctx, a.artist.toUpperCase(), FONT, artistSize, maxTextW)}px ${FONT}`;
     ctx.fillStyle = ember;
     ctx.globalAlpha = alpha.artist;
     ctx.fillText(a.artist.toUpperCase(), left, titleY - titleSize * 0.95);
   }
 
   if (a.title) {
-    ctx.font = `${titleSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * CREDIT.trackTitle)}px`;
+    ctx.font = `${fitSize(ctx, a.title.toUpperCase(), FONT, titleSize, maxTextW)}px ${FONT}`;
     // scorched: a black cut under the face, offset by the same wobble as the
     // heat, so the type sits in the air the fire is heating
     ctx.fillStyle = "rgba(0,0,0,0.7)";

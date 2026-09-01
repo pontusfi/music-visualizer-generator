@@ -12,7 +12,7 @@
  * halo comes from `downbeatPulse`; nothing here carries between frames.
  */
 
-import { CREDIT, creditAlpha } from "../credit.js";
+import { CREDIT, CREDIT_FIT, creditAlpha, fitSize } from "../credit.js";
 import { creditFloor } from "../services.js";
 import { HORIZON } from "../backgrounds/bloodtide.js";
 import { css, shiftHue } from "../palette.js";
@@ -105,7 +105,12 @@ export function draw(ctx, s, a) {
   const alpha = creditAlpha(s);
   const titleSize = Math.round(unit * CREDIT.title * 0.98);
   const artistSize = Math.round(unit * CREDIT.artist * 0.84);
-  const cx = x + w / 2;
+  // Centred on the frame, not on the plate. Wake seats the record right of
+  // centre so the moon owns the left of the picture, and hanging the type off
+  // the plate carried that offset into the credit — barely noticeable at 16:9,
+  // and at 9:16 it pushed a long title clean off the right edge.
+  const cx = W / 2;
+  const maxTextW = W * CREDIT_FIT;
   // held above the badge row when any service is picked: the row is drawn
   // after the look and owns the bottom of the frame
   const titleY = Math.min(H - unit * 0.070, creditFloor(a));
@@ -114,16 +119,16 @@ export function draw(ctx, s, a) {
   ctx.textBaseline = "alphabetic";
 
   if (a.artist) {
-    ctx.font = `${artistSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * 0.030)}px`;
+    ctx.font = `${fitSize(ctx, a.artist.toUpperCase(), FONT, artistSize, maxTextW)}px ${FONT}`;
     ctx.fillStyle = ember;
     ctx.globalAlpha = alpha.artist * 0.9;
     ctx.fillText(a.artist.toUpperCase(), cx, titleY - titleSize * 0.95);
   }
 
   if (a.title) {
-    ctx.font = `${titleSize}px ${FONT}`;
     ctx.letterSpacing = `${Math.round(unit * CREDIT.trackTitle * 2)}px`;
+    ctx.font = `${fitSize(ctx, a.title.toUpperCase(), FONT, titleSize, maxTextW)}px ${FONT}`;
     // lit from below by the water: an ember pass under a bone face
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.35 + s.rms * 0.35;

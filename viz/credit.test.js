@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { CREDIT, creditAlpha, creditBox } from "./credit.js";
+import { readdirSync, readFileSync } from "node:fs";
+
+import { CREDIT, CREDIT_FIT, creditAlpha, creditBox, fitSize } from "./credit.js";
 import { layoutFor } from "./palette.js";
 
 function assets(W, H, over = {}) {
@@ -94,5 +96,71 @@ describe("creditBox", () => {
 describe("CREDIT sizes", () => {
   it("keeps title larger than artist", () => {
     assert.ok(CREDIT.title > CREDIT.artist);
+  });
+});
+
+describe("fitSize", () => {
+  const FONT = "Display, sans-serif";
+
+  /** A context whose text width is proportional to size and character count. */
+  function ctx(perChar = 0.6) {
+    return {
+      font: "",
+      measureText(s) {
+        return { width: s.length * parseFloat(this.font) * perChar };
+      },
+    };
+  }
+
+  it("leaves a line that already fits at the size it asked for", () => {
+    // 10 chars at 40px and 0.6 per char is 240 wide, well inside 900
+    assert.equal(fitSize(ctx(), "SHORT LINE", FONT, 40, 900), 40);
+  });
+
+  it("shrinks a line that would run off the frame", () => {
+    // 20 chars at 60px is 720 wide against a 400 limit
+    const size = fitSize(ctx(), "BLESSED ARE THE DEAD", FONT, 60, 400);
+    assert.ok(size < 60, `did not shrink: ${size}`);
+    assert.ok(size * 20 * 0.6 <= 400 + 1, `still ${size * 20 * 0.6} wide, over 400`);
+  });
+
+  it("never returns more than the size asked for", () => {
+    for (const max of [50, 200, 5000]) {
+      assert.ok(fitSize(ctx(), "A TITLE", FONT, 30, max) <= 30);
+    }
+  });
+
+  it("is unbothered by an empty line or a nonsense width", () => {
+    assert.equal(fitSize(ctx(), "", FONT, 42, 100), 42);
+    assert.equal(fitSize(ctx(), "X", FONT, 42, 0), 42);
+  });
+
+  it("keeps the longest plausible title inside a 9:16 frame", () => {
+    // the real regression: at 9:16 the short edge is the width, so a title
+    // sized off `unit` is measured against the edge it can actually run off
+    const W = 1080;
+    const size = fitSize(ctx(0.55), "BLESSED ARE THE DEAD", FONT,
+      Math.round(W * CREDIT.title), W * CREDIT_FIT);
+    assert.ok(size * "BLESSED ARE THE DEAD".length * 0.55 <= W * CREDIT_FIT + 1);
+  });
+});
+
+describe("the looks", () => {
+  const dir = new URL("./looks/", import.meta.url);
+
+  it("fit their title to the frame rather than letting it run off the edge", () => {
+    // At 16:9 a title sized off the short edge has the long edge to run along
+    // and nothing looks wrong. At 9:16 the short edge is the width, and a long
+    // title ran clean past the frame — so every look has to measure.
+    const drawsType = [];
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".js") || file === "index.js" || file.includes(".test.")) continue;
+      const src = readFileSync(new URL(file, dir), "utf8");
+      if (!src.includes("fillText")) continue;
+      drawsType.push(file);
+      assert.ok(src.includes("fitSize("),
+        `${file} draws a title without fitting it to the frame width`);
+    }
+    assert.ok(drawsType.length >= 5, `scan found only ${drawsType.length} looks`);
   });
 });
