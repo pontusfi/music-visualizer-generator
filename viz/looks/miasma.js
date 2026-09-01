@@ -15,6 +15,7 @@ import { off } from "../assets.js";
 import { blobSheet, scroll } from "../fields.js";
 import { CREDIT, creditAlpha } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
+import { servicesTop } from "../services.js";
 import { decay } from "../signals.js";
 
 export const id = "miasma";
@@ -125,7 +126,10 @@ export function draw(ctx, s, a) {
   const titleSize = Math.round(unit * CREDIT.title);
   const artistSize = Math.round(unit * CREDIT.artist * 0.9);
   const cx = x + w / 2;
-  const titleY = Math.min(H - unit * 0.07, y + h + unit * 0.12);
+  // held above the badge row when any service is picked: the row is drawn
+  // after the look and owns the bottom of the frame
+  const titleY = Math.min(H - unit * 0.07, y + h + unit * 0.12,
+                          servicesTop(a.services, W, H, unit) - unit * 0.030);
   const veil = 0.55 + s.rms * 0.45;
 
   ctx.textAlign = "center";

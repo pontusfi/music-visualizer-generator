@@ -15,6 +15,7 @@
 import { boltPath, strokeBolt } from "../fields.js";
 import { CREDIT, creditAlpha } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
+import { servicesTop } from "../services.js";
 import { decay } from "../signals.js";
 
 export const id = "totem";
@@ -139,7 +140,10 @@ export function draw(ctx, s, a) {
   const alpha = creditAlpha(s);
   const titleSize = Math.round(unit * CREDIT.title);
   const artistSize = Math.round(unit * CREDIT.artist * 0.88);
-  const titleY = Math.min(H - unit * 0.06, y + h + unit * 0.10);
+  // held above the badge row when any service is picked: the row is drawn
+  // after the look and owns the bottom of the frame
+  const titleY = Math.min(H - unit * 0.06, y + h + unit * 0.10,
+                          servicesTop(a.services, W, H, unit) - unit * 0.030);
   // the type flinches when the stone is struck
   const jolt = live * unit * 0.004;
 

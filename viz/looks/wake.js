@@ -13,6 +13,7 @@
  */
 
 import { CREDIT, creditAlpha } from "../credit.js";
+import { servicesTop } from "../services.js";
 import { HORIZON } from "../backgrounds/bloodtide.js";
 import { css, shiftHue } from "../palette.js";
 import { decay } from "../signals.js";
@@ -105,7 +106,10 @@ export function draw(ctx, s, a) {
   const titleSize = Math.round(unit * CREDIT.title * 0.98);
   const artistSize = Math.round(unit * CREDIT.artist * 0.84);
   const cx = x + w / 2;
-  const titleY = H - unit * 0.070;
+  // held above the badge row when any service is picked: the row is drawn
+  // after the look and owns the bottom of the frame
+  const titleY = Math.min(H - unit * 0.070,
+                          servicesTop(a.services, W, H, unit) - unit * 0.030);
 
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";

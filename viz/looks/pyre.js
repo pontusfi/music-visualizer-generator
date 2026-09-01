@@ -14,6 +14,7 @@
 import { off } from "../assets.js";
 import { CREDIT, creditAlpha } from "../credit.js";
 import { css, shiftHue } from "../palette.js";
+import { servicesTop } from "../services.js";
 
 export const id = "pyre";
 export const name = "Pyre";
@@ -196,7 +197,10 @@ export function draw(ctx, s, a) {
   const titleSize = Math.round(unit * CREDIT.title * 1.1);
   const artistSize = Math.round(unit * CREDIT.artist);
   const left = Math.max(unit * 0.06, x);
-  const titleY = H - unit * 0.070;
+  // held above the badge row when any service is picked: the row is drawn
+  // after the look and owns the bottom of the frame
+  const titleY = Math.min(H - unit * 0.070,
+                          servicesTop(a.services, W, H, unit) - unit * 0.030);
   const wob = Math.sin(s.i * 0.09) * unit * 0.0016 * (0.4 + s.wall);
 
   ctx.textAlign = "left";
