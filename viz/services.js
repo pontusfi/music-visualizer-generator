@@ -200,10 +200,20 @@ export const SERVICE_IDS = Object.keys(SERVICES);
 
 /** Share of the frame height the badge row's bottom edge sits at. */
 const BOTTOM = 0.975;
-const GLYPH = 0.052; // mark diameter, share of unit
+const GLYPH = 0.042; // mark diameter, share of unit
 const GAP = 0.030; // between items in a row
 const ROW_GAP = 0.024; // between rows
 const CHAR = 0.0095; // rough width per label character, share of unit
+/** Between a mark's bottom edge and the baseline of its name. */
+const NAME_GAP = 0.016;
+/**
+ * Between a look's credit baseline and the top of the badge row.
+ *
+ * One constant rather than a number copied into each look: a title sits on its
+ * baseline and hangs a descender below it, and the row has to clear that in
+ * every frame the UI can ask for, not just the ones that fit on one row.
+ */
+const CLEARANCE = 0.034;
 
 function itemWidth(id, unit) {
   const name = SERVICES[id]?.name ?? "";
@@ -253,6 +263,20 @@ export function layoutServices(ids, W, unit) {
     }
   });
   return out;
+}
+
+/**
+ * The lowest baseline a look may put its credit line on.
+ *
+ * Every look asks for this rather than keeping its own copy of the clearance,
+ * so a change here moves all of them together and a new look cannot quietly
+ * draw its title through the badges. The frame bottom when nothing is picked,
+ * which leaves a look's own preferred baseline untouched.
+ */
+export function creditFloor(a) {
+  const unit = a.layout.unit;
+  const top = servicesTop(a.services ?? [], a.W, a.H, unit);
+  return top === a.H ? a.H : top - unit * CLEARANCE;
 }
 
 /** How tall the whole block is: the label, plus a row per wrapped row. */
@@ -352,7 +376,7 @@ export function drawServices(ctx, ids, a, s) {
     ctx.fillStyle = a.palette.boneCss;
     ctx.font = `${Math.round(unit * (CREDIT.label * 0.95))}px ${FONT}`;
     ctx.globalAlpha = 0.85;
-    ctx.fillText(svc.name.toUpperCase(), x, markY + r + unit * 0.020);
+    ctx.fillText(svc.name.toUpperCase(), x, markY + r + unit * NAME_GAP);
     ctx.globalAlpha = 1;
   }
   ctx.textAlign = "left";

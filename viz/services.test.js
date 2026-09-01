@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { layoutServices, servicesTop, SERVICE_IDS, SERVICES } from "./services.js";
+import { readdirSync, readFileSync } from "node:fs";
+
+import { CREDIT } from "./credit.js";
+import {
+  creditFloor, layoutServices, servicesTop, SERVICE_IDS, SERVICES,
+} from "./services.js";
 
 describe("the services registry", () => {
   it("gives every id a name and a mark", () => {
@@ -233,5 +238,75 @@ describe("the Spotify disc", () => {
     const width = (Math.max(...cut.map((p) => p[0])) - Math.min(...cut.map((p) => p[0]))) / R;
     assert.ok(height > 0.6, `arcs only ${height.toFixed(2)} radii tall`);
     assert.ok(width > 1.2, `arcs only ${width.toFixed(2)} radii wide`);
+  });
+});
+
+describe("creditFloor", () => {
+  const frame = (W, H, services) => ({
+    W, H, services, layout: { unit: Math.min(W, H) },
+  });
+
+  // every aspect and resolution tier the UI can ask for
+  const FRAMES = [
+    [1280, 720], [720, 1280],
+    [1920, 1080], [1080, 1920],
+    [2560, 1440], [1440, 2560],
+    [3840, 2160], [2160, 3840],
+  ];
+
+  it("keeps the credit clear of the badge row in every render the UI can ask for", () => {
+    // the guarantee: not "usually", and not only for the service counts that
+    // happen to fit on one row. A title sits on its baseline, so the descender
+    // below it has to clear the row too.
+    for (const [W, H] of FRAMES) {
+      const unit = Math.min(W, H);
+      const descender = unit * CREDIT.title * 0.25;
+      for (let n = 1; n <= SERVICE_IDS.length; n += 1) {
+        const ids = SERVICE_IDS.slice(0, n);
+        const floor = creditFloor(frame(W, H, ids));
+        const top = servicesTop(ids, W, H, unit);
+        assert.ok(floor + descender < top,
+          `${W}x${H} with ${n} services: baseline ${floor.toFixed(1)} `
+          + `+ descender ${descender.toFixed(1)} reaches the row at ${top.toFixed(1)}`);
+      }
+    }
+  });
+
+  it("does not push the credit off the top of the frame", () => {
+    // clearing the row is only half of it — a floor that walked up the frame
+    // would be "no overlap" and still wrong
+    for (const [W, H] of FRAMES) {
+      const floor = creditFloor(frame(W, H, SERVICE_IDS));
+      assert.ok(floor > H * 0.55, `${W}x${H}: floor at ${floor.toFixed(1)} is above mid-frame`);
+    }
+  });
+
+  it("is the frame bottom when no service is picked", () => {
+    for (const [W, H] of FRAMES) {
+      assert.equal(creditFloor(frame(W, H, [])), H);
+    }
+  });
+});
+
+describe("the looks", () => {
+  const dir = new URL("./looks/", import.meta.url);
+
+  it("clamp their credit to creditFloor, every one of them", () => {
+    // The clearance used to be a magic number copied into each look, so a new
+    // look could simply forget it and draw its title through the badges — the
+    // exact bug this guards. Source-scanned rather than rendered: the looks
+    // need a canvas, and the property worth pinning is that none of them opts
+    // out of the shared floor.
+    const drawsType = [];
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".js") || file === "index.js" || file.includes(".test.")) continue;
+      const src = readFileSync(new URL(file, dir), "utf8");
+      if (!src.includes("fillText") && !src.includes("drawCredit")) continue;
+      drawsType.push(file);
+      assert.ok(src.includes("creditFloor("),
+        `${file} draws type but never clamps to creditFloor`);
+    }
+    assert.ok(drawsType.length >= 5,
+      `only found ${drawsType.length} looks drawing type; the scan is not finding them`);
   });
 });

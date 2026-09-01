@@ -349,6 +349,19 @@ cleanly from 720p to 4K where a bitmap would not. `layoutServices` wraps to a
 second row rather than overflowing when several are picked at 9:16; an
 unpicked service draws nothing.
 
+"Beneath the credit block" is enforced rather than hoped for. `creditFloor(a)`
+is the lowest baseline a look may put its credit line on — the top of the badge
+row, less enough clearance for the title's descender — and every look clamps to
+it with `Math.min`, so picking a service moves the type up instead of drawing it
+through the badges. It is one shared constant rather than a number copied into
+each look, and a test scans the look sources to catch a new one that forgets to
+clamp; another walks every aspect, resolution tier and service count and checks
+the baseline clears the row. The marks are also baked into their own transparent
+canvases before being blitted: they knock their detail out with
+`destination-out`, and the render canvas is `alpha: false`, so drawing them
+straight onto the frame would erase to black rather than to the picture behind —
+which is invisible on dark ground and very visible over `pyre`'s fire.
+
 Registry order is draw order, always: `spotify`, `apple`, `youtube`,
 `soundcloud`, `bandcamp`, `tidal`, `deezer`, `amazon`, regardless of the
 order they were clicked in.
