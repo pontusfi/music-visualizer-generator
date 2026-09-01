@@ -271,9 +271,9 @@ class TestEveryParamSurvivesTheForm:
         )
 
     def test_the_look_reaches_the_job(self, client):
-        r = upload(client, look="orbit")
+        r = upload(client, look="pyre")
         assert r.status_code == 201, r.text
-        assert r.json()["params"]["look"] == "orbit"
+        assert r.json()["params"]["look"] == "pyre"
 
     def test_each_look_reaches_the_job_distinctly(self, client):
         from app.schemas import LOOKS
@@ -287,12 +287,12 @@ class TestEveryParamSurvivesTheForm:
         assert "look" in r.text.lower()
 
     def test_omitting_the_look_still_works(self, client):
-        assert upload(client).json()["params"]["look"] == "burn"
+        assert upload(client).json()["params"]["look"] == "chrome"
 
     def test_the_background_reaches_the_job(self, client):
-        r = upload(client, background="nebula")
+        r = upload(client, background="choke")
         assert r.status_code == 201, r.text
-        assert r.json()["params"]["background"] == "nebula"
+        assert r.json()["params"]["background"] == "choke"
 
     def test_each_background_reaches_the_job_distinctly(self, client):
         from app.schemas import BACKGROUNDS
@@ -307,7 +307,7 @@ class TestEveryParamSurvivesTheForm:
         assert "background" in r.text.lower()
 
     def test_omitting_the_background_still_works(self, client):
-        assert upload(client).json()["params"]["background"] == "drift"
+        assert upload(client).json()["params"]["background"] == "smelt"
 
     def test_services_round_trip_as_a_list(self, client):
         body = upload(client, services=["spotify", "apple"]).json()

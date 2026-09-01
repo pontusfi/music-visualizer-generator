@@ -33,8 +33,8 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   preset: "slow",
   bands: 24,
   hpss: true,
-  look: "burn",
-  background: "drift",
+  look: "chrome",
+  background: "smelt",
   services: [],
   previewEnabled: false,
   previewStart: 30,
@@ -243,29 +243,29 @@ export interface Look {
  *  A backend test asserts every id here has a registered module. */
 export const LOOKS: Look[] = [
   {
-    id: "burn",
-    name: "Burn",
-    note: "the cover ignites from its own highlights on every kick",
+    id: "wake",
+    name: "Wake",
+    note: "the record on the horizon of a red sea, lit from behind by the moon",
   },
   {
-    id: "orbit",
-    name: "Orbit",
-    note: "the record spins, spectrum wrapped round the rim",
+    id: "pyre",
+    name: "Pyre",
+    note: "the record on the fire, charring further the longer the track runs",
   },
   {
-    id: "shear",
-    name: "Shear",
-    note: "the artwork tears along the spectrum and reassembles",
+    id: "miasma",
+    name: "Miasma",
+    note: "the smoke eats pieces of the artwork and hands them back on the chorus",
   },
   {
-    id: "refract",
-    name: "Refract",
-    note: "the cover through moving glass, over a living background — best with a GPU",
+    id: "chrome",
+    name: "Chrome",
+    note: "polished steel over a mercury pool, wiped by a highlight once a bar",
   },
   {
-    id: "tide",
-    name: "Tide",
-    note: "the cover above a horizon, reflected in moving water below it",
+    id: "totem",
+    name: "Totem",
+    note: "the record as a standing stone, struck by lightning on the transients",
   },
 ];
 
@@ -280,29 +280,29 @@ export interface Background {
  *  A backend test asserts every id here has a registered module. */
 export const BACKGROUNDS: Background[] = [
   {
-    id: "drift",
-    name: "Drift",
-    note: "soft diagonal bands, sliding — the quietest of the five",
+    id: "bloodtide",
+    name: "Bloodtide",
+    note: "a red moon low on the horizon, and the sea it is lighting",
   },
   {
-    id: "nebula",
-    name: "Nebula",
-    note: "four glows, orbiting slowly behind everything",
+    id: "emberstorm",
+    name: "Emberstorm",
+    note: "plume, tongues and sparks — the whole frame on fire",
   },
   {
-    id: "rays",
-    name: "Rays",
-    note: "light from behind the cover, turning with the bar",
+    id: "choke",
+    name: "Choke",
+    note: "two decks of smoke crossing, with god rays trying to get through",
   },
   {
-    id: "dust",
-    name: "Dust",
-    note: "three layers of drifting specks, each at its own pace",
+    id: "smelt",
+    name: "Smelt",
+    note: "molten streams pouring into a pool that ripples on the low end",
   },
   {
-    id: "grid",
-    name: "Grid",
-    note: "a perspective floor, receding to a horizon on the beat",
+    id: "storm",
+    name: "Storm",
+    note: "cloud, rain in two planes, and lightning on the hardest downbeats",
   },
 ];
 

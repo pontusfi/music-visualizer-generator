@@ -81,7 +81,7 @@ def should_report(kind: str, text: str, url: str) -> bool:
 
 
 def build_url(port: int, w: int, h: int, title: str, artist: str, artwork: str,
-              look: str = "burn", background: str = "drift",
+              look: str = "chrome", background: str = "smelt",
               services: str = "") -> str:
     """Percent-encoded, because an ampersand in a track title is not a delimiter."""
     query = urlencode({"w": w, "h": h, "title": title, "artist": artist,
@@ -138,25 +138,33 @@ def resolve_capture(requested: str, encoder_available: bool) -> str:
 
 
 #: Looks whose pixels depend on the draw order once Chromium rasterizes on the
-#: GPU. Chromium's accelerated 2D canvas caches something across draws: on an
-#: RTX 4060 Ti, Shear's frame 150 rendered four times running settles on one
-#: image, and rendering 149 before each 150 gives a different one — for good,
-#: not as a warm-up. Orbit differs by at most 3 in a channel; Shear reaches 121
-#: across 12% of the frame. Burn and Refract are identical either way, Refract
-#: because its imagery is GL rather than 2D. Tide was measured clean on the
-#: same hardware and left out on that basis.
+#: GPU. Chromium's accelerated 2D canvas caches something across draws, so a
+#: frame walked to in order and the same frame entered cold stop matching —
+#: reproducibly, not as a warm-up.
+#:
+#: Empty, and measured that way rather than assumed. The whole 5x5 matrix was
+#: walked on an RTX 4060 Ti: every look is exact under both rasterizers over
+#: every background that is itself clean, so no look carries the fault on its
+#: own. `pyre` was the one to suspect — it and `emberstorm` are the only
+#: modules that set `ctx.filter` — and the blurred tongues measured clean.
 #:
 #: Shared with tests/test_determinism.py, which xfails exactly these, so the
 #: warning and the tests cannot drift apart.
-GPU_UNSTABLE_LOOKS = ("orbit", "shear")
+GPU_UNSTABLE_LOOKS = ()
 
 #: Backgrounds with the same hazard, independent of which look draws on top of
-#: them. Measured the same way: on the RTX 4060 Ti, Grid's frame 2 comes out
-#: one way walked to in order and another entered cold, reproducibly, under
-#: `burn` — the one look otherwise exact under both rasterizers, which is what
-#: isolates the instability to the background's own strokes rather than the
-#: look compositing over it. Drift, Nebula, Rays and Dust all measured clean.
-GPU_UNSTABLE_BACKGROUNDS = ("grid",)
+#: them. Bloodtide and Smelt drift at frames 2 and 92 of the test track under
+#: all five looks; Emberstorm, Choke and Storm are exact under all five. Both
+#: of the unstable two rebuild a radial gradient every frame whose centre and
+#: radius move with the music — Bloodtide's corona around the moon, Smelt's
+#: splash where each stream lands — which is the shape of thing Chromium's
+#: accelerated 2D canvas is caching across draws.
+#:
+#: Not a fault in the modules and not fixable here: a straight sequential
+#: render is still reproducible against itself, and software raster is exact.
+#: What stops holding is that a frame entered cold matches the same frame
+#: walked to, which is what --preview and the contact sheet rely on.
+GPU_UNSTABLE_BACKGROUNDS = ("bloodtide", "smelt")
 
 
 def gpu_caution(look: str, gpu: bool, background: str | None = None) -> str | None:
@@ -167,8 +175,8 @@ def gpu_caution(look: str, gpu: bool, background: str | None = None) -> str | No
     against itself. What stops being true is that the same frame drawn in a
     different order matches — which is exactly what `--preview` and the contact
     sheet do. Either the look or the background can be the cause: a background
-    composites under every look that uses it, so its own instability is
-    inherited by an otherwise-exact look the same way Shear's is.
+    composites under every look that uses it, so an otherwise-exact look
+    inherits its instability.
     """
     if not gpu:
         return None
@@ -181,9 +189,8 @@ def gpu_caution(look: str, gpu: bool, background: str | None = None) -> str | No
     return (f"note: on the GPU, the {which} draws slightly differently "
             f"depending on which frames came before it, so a --preview or a "
             f"contact sheet will not match the same frames of a full render "
-            f"exactly. The render itself is fine. Use --look refract, which "
-            f"ignores --background and draws its own GL field instead, or "
-            f"drop --gpu, if you need them to agree.")
+            f"exactly. The render itself is fine. Drop --gpu if you need them "
+            f"to agree.")
 
 
 def describe_renderer(raw: str) -> str:
@@ -440,9 +447,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--artist", default="")
     ap.add_argument("--crf", type=int, default=16)
     ap.add_argument("--preset", default="slow")
-    ap.add_argument("--look", default="burn",
+    ap.add_argument("--look", default="chrome",
                     help="which design to draw: see viz/looks/")
-    ap.add_argument("--background", default="drift",
+    ap.add_argument("--background", default="smelt",
                     help="the field a look draws on: see viz/backgrounds/")
     ap.add_argument("--services", default="",
                     help="comma-separated streaming services to badge into the "

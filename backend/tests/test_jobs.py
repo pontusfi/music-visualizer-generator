@@ -223,7 +223,7 @@ class TestCreate:
         job = manager.create(default_params(), ("a.png", png()), ("a.wav", wav()))
         assert (job.dir / "viz" / "main.js").exists()
         assert (job.dir / "viz" / "signals.js").exists()
-        assert (job.dir / "viz" / "looks" / "burn.js").exists()
+        assert (job.dir / "viz" / "looks" / "chrome.js").exists()
 
     def test_a_job_keeps_its_own_copy_of_the_design(self, settings):
         # editing a look on disk must not change what a queued job renders
@@ -235,7 +235,7 @@ class TestCreate:
     def test_survives_a_pipeline_directory_with_no_viz(self, settings):
         # the CLI can be used without the module tree; that should not stop a
         # job being created, only produce a page that complains in the log
-        (settings.pipeline_dir / "viz" / "looks" / "burn.js").unlink()
+        (settings.pipeline_dir / "viz" / "looks" / "chrome.js").unlink()
         (settings.pipeline_dir / "viz" / "signals.js").unlink()
         (settings.pipeline_dir / "viz" / "main.js").unlink()
         (settings.pipeline_dir / "viz" / "looks").rmdir()

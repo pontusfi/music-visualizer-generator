@@ -205,8 +205,8 @@ class TestLookContract:
             assert args.look == look
 
     def test_the_look_reaches_the_query_string(self, render):
-        url = render.build_url(9000, 1920, 1080, "T", "A", "artwork.png", "orbit")
-        assert "look=orbit" in url
+        url = render.build_url(9000, 1920, 1080, "T", "A", "artwork.png", "pyre")
+        assert "look=pyre" in url
 
     def test_every_schema_look_has_a_module(self):
         from app.schemas import LOOKS
@@ -218,7 +218,7 @@ class TestLookContract:
             assert f'from "./{look}.js"' in registry, look
 
     def test_render_defaults_to_the_signature_look(self, render):
-        assert render.build_parser().parse_args([]).look == "burn"
+        assert render.build_parser().parse_args([]).look == "chrome"
 
 
 class TestBackgroundContract:
@@ -249,8 +249,8 @@ class TestBackgroundContract:
 
     def test_the_background_reaches_the_query_string(self, render):
         url = render.build_url(9000, 1920, 1080, "T", "A", "artwork.png",
-                               background="nebula")
-        assert "bg=nebula" in url
+                               background="choke")
+        assert "bg=choke" in url
 
     def test_every_schema_background_has_a_module(self):
         from app.schemas import BACKGROUNDS
@@ -261,7 +261,7 @@ class TestBackgroundContract:
             assert f'from "./{background}.js"' in registry, background
 
     def test_render_defaults_to_the_quietest_background(self, render):
-        assert render.build_parser().parse_args([]).background == "drift"
+        assert render.build_parser().parse_args([]).background == "smelt"
 
 
 class TestServiceContract:

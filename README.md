@@ -155,17 +155,17 @@ python -m http.server 8000
 # 3. judge a look and a background together in seconds: twelve frames across
 #    the track, one PNG. No ffmpeg needed, so this works on a machine that
 #    cannot render yet — the fast way to check whether a pair fights itself.
-python render.py --look orbit --background nebula --contact-sheet sheet.png
+python render.py --look totem --background storm --contact-sheet sheet.png
 
 # 4. render a 15-second test at 720p
 python render.py --preview 30 45 --artist "BAND" --title "TRACK" -o test.mp4
 
 # 5. render the whole thing, with a streaming-platform row burned in
-python render.py -w 1920 -H 1080 --look burn --background drift \
+python render.py -w 1920 -H 1080 --look chrome --background smelt \
     --services spotify,apple,youtube --artist "BAND" --title "TRACK" -o out.mp4
 
 # 6. the same track as a phone cut — every look refits itself to the frame
-python render.py -w 1080 -H 1920 --look burn --artist "BAND" --title "TRACK" -o vertical.mp4
+python render.py -w 1080 -H 1920 --look wake --artist "BAND" --title "TRACK" -o vertical.mp4
 ```
 
 `render.py` takes any even `-w`/`-H`; `viz/palette.js` lays the cover out against
@@ -271,11 +271,11 @@ picks one — `render.py --look`, or the picker in the web UI.
 
 | id | what it does |
 |---|---|
-| `burn` | the signature. Ten luminance thresholds of the cover ignite from its own highlights on every kick. The ember drifts with the harmony, the composition reseats itself each section, and the channel split fires on discrete onsets. |
-| `orbit` | the record spins. The cover becomes a disc, the spectrum wraps its rim, and the twelve chroma classes sit outside as spokes in circle-of-fifths order. Rotation is locked to the beat grid, so it turns at the track's tempo. |
-| `shear` | the artwork tears along the spectrum. Forty-four horizontal slices, each displaced by its own frequency band; onsets rip it wide and it walks back together over the frames that follow. |
-| `refract` | the cover through moving glass. A domain-warped field fills the frame and the artwork refracts through it per pixel, colour splitting where the glass bends hardest, over a two-pass bloom. The first look drawn in WebGL rather than Canvas2D — see **Rasterisation** below. Draws its own GL field as its background and ignores `?bg=`. |
-| `tide` | the cover above a horizon, reflected in moving water below it. ~110 one-pixel-tall `drawImage` scanlines of a flipped copy of the cover, each offset by a sum of three sines driven by the low/mid/high spectrum thirds and the kick — the testable half lives in `waveOffset`. Canvas2D, not WebGL: a liquid reflection does not need per-pixel work, so it costs an order of magnitude less than a shader would have. |
+| `wake` | the record on the horizon of a red sea. It stands on the waterline so Bloodtide's moon rises behind it and rims its edges, held near silhouette by a scrim that lifts with the loudness; below, forty slices of inverted cover ripple in the water and tear apart on every transient. Imports `HORIZON` from `viz/backgrounds/bloodtide.js` — the one look that reads its partner. |
+| `pyre` | the record on the fire. Eleven flame tongues climb the face as quadratics whose control points are sines of the frame index, every kick throws a flare up it, and a baked rim of char is drawn at an alpha that rises with `progress` — so a three-minute single and a twelve-minute epic both finish equally burnt. |
+| `miasma` | the cover taken by the smoke. The artwork is composited through a moving blob mask on a scratch canvas, so the bank eats pieces of it and hands them back; how much survives is the loudness, so a breakdown nearly erases the record and the chorus brings it whole. One rim light and a hairline keep the top edge findable. |
+| `chrome` | the record in polished steel over a mercury pool. Forty-four slices of the artwork redrawn upside down and displaced by a travelling sine, a bevel that reads as metal, a specular sweep that wipes the plate once per bar off `barPhase`, and a title filled with a real chrome ramp. The plainest draw path of the five. |
+| `totem` | the record as a standing stone. Forty slices, each a little narrower toward the top, fake enough perspective to make it a thing in a place; arcs crawl its edges continuously and transients throw bolts at it from the frame edge that light the whole face. Every bolt is midpoint displacement seeded from the frame index of the strike. |
 
 Adding one is a file in `viz/looks/` and a line in `viz/looks/index.js`. A look
 is `{ id, name, draw(ctx, sig, assets), init?(assets) }`, where `sig` is
@@ -289,13 +289,15 @@ viz/palette.js   the record's own colours, and where it sits in the frame
 viz/assets.js    burn masks, grain, vignette, the credit scrim — built once
 viz/credit.js    the shared artist/title renderer every look draws through
 viz/services.js  streaming-platform badges, burned into the frame
-viz/gl.js        the WebGL2 seam: shader looks render here and blit into #c
+viz/fields.js    baked blob/ray sheets, particle tables, bolts — init-time only
 ```
 
-Motion trails are analytic rather than a feedback buffer. Orbit computes where
-the disc was at frame *i-k* and draws it there, so nothing carries state from
+Motion trails are analytic rather than a feedback buffer: a look computes where
+a thing *was* at frame *i-k* and draws it there, so nothing carries state from
 one frame to the next and `--preview 90 105` produces exactly the frames a full
-render would.
+render would. The same rule is why a background's ground fill has to cover every
+pixel — nothing clears the canvas between frames, so a sky and a sea meeting on
+a fractional row leave a sixth of the previous frame showing through it.
 
 That is enforced, not just intended: `tests/test_determinism.py` drives the real
 page and checks that walking the track in order gives byte-identical frames to
@@ -315,19 +317,26 @@ reachable state any more, not that it is merely one option among several.
 
 | id | what it draws | per-frame cost |
 |---|---|---|
-| `drift` | soft diagonal bands of ground↔ember sliding across the frame, the pitch breathing with the low end. Default — the quietest of the five, so an existing render changes the least. | 1 `drawImage` of a pre-built 2W sheet |
-| `nebula` | four layered radial glows on slow seeded orbits, brightening with `rms` and `arc` | 4 `drawImage`, `lighter` |
-| `rays` | light rays from behind the cover, rotating with `barPhase`, flaring on `downbeatPulse` | 1 rotated `drawImage` of a pre-built wedge sheet |
-| `dust` | three parallax layers of seeded specks, drifting at their own rates | 6 `drawImage` (two each, for the wrap) |
-| `grid` | a perspective grid receding to a horizon, advancing on the beat grid rather than the frame counter | ~40 strokes |
+| `bloodtide` | a red moon low on the horizon and the sea it is lighting: mottled disc with a corona that swells on the kick, cloud bands crossing it, and 46 bands of water compressed toward the horizon with the moon's glitter path broken across the crests | 4 `drawImage` for the clouds + ~370 rects |
+| `emberstorm` | the whole frame on fire: three plume sheets scrolling upward at their own rates, fifteen tongues along the floor, sparks, and a smoke cap over the top | 12 `drawImage` + 15 blurred fills |
+| `choke` | two decks of smoke crossing at different scales, god rays over the top, and a gust that shoves everything sideways on a transient and drifts back | 8 `drawImage` + 90 specks |
+| `smelt` | a pour: seven molten streams falling into a pool that ripples on the low end, splashes where each lands, and slag spitting back up out of it. Default — the field `chrome` hangs its mirror over. | ~20 gradient fills + 70 specks |
+| `storm` | two cloud decks crossing overhead, rain in two planes, and a bolt on the downbeats that land hardest, forked about half the time | 8 `drawImage` + 2 strokes + a bolt |
 
 A background is `{ id, name, draw(ctx, sig, assets), init?(assets) }`, in
 `viz/backgrounds/`, registered in `viz/backgrounds/index.js` exactly the way
 a look is. `draw` lays the ground fill itself — a look's opening is
-`bg.draw(ctx, s, a)` in place of its own `fillRect`. `refract` is the one
-exception: its GL field already *is* a computed, bass-reactive background, so
-it draws that and ignores `?bg=` rather than compositing a second,
-independently-designed field underneath it.
+`bg.draw(ctx, s, a)` in place of its own `fillRect`. The expensive half of each
+one — plume and cloud sheets that wrap, ray sheets, particle tables — is baked
+once in `init` by the shared builders in `viz/fields.js`; nothing in that file
+may be called from a draw path.
+
+Each look has an intended partner (`wake`/`bloodtide`, `pyre`/`emberstorm`,
+`miasma`/`choke`, `chrome`/`smelt`, `totem`/`storm`), but the pairing is a
+suggestion and all twenty-five combinations compose. `wake` is the one that
+reads its partner, importing `HORIZON` from `bloodtide` so the plate stands
+exactly on the waterline; over any other background it places its horizon at
+the same proportion.
 
 ## Streaming services
 
@@ -355,37 +364,35 @@ the machine. The renderer actually obtained is printed on the
 
 Per frame at 1080p, measured on this host:
 
-| look | SwiftShader | RTX 4060 Ti |
+Each look over its intended background, so the numbers are what the pairing
+actually costs. Timed by forcing the draw queue to flush after every frame: a
+Canvas2D call only enqueues work, so timing `renderFrame` on its own measures
+how fast calls can be queued, not how long the frame takes.
+
+| look x background | SwiftShader | RTX 4060 Ti |
 |---|---|---|
-| `burn` | 9.4 ms | 0.06 ms |
-| `orbit` | 13.7 ms | 0.08 ms |
-| `shear` | 9.9 ms | 0.10 ms |
-| `refract` | 42 ms | 0.06 ms |
+| `wake` x `bloodtide` | 22.3 ms | 18.1 ms |
+| `pyre` x `emberstorm` | 73.5 ms | 10.4 ms |
+| `miasma` x `choke` | 19.6 ms | 9.1 ms |
+| `chrome` x `smelt` | 17.0 ms | 14.2 ms |
+| `totem` x `storm` | 11.7 ms | 9.5 ms |
 
-`tide` was measured on a different machine than the table above (this was
-written from a container without that RTX 4060 Ti, so the two are not
-directly comparable in absolute terms) — 14.9 ms SwiftShader / 0.2 ms GPU,
-against Shear's 20.0 ms / 0.1 ms on that same machine in the same run: about
-0.75x Shear's cost, comfortably the same shape as the other Canvas2D looks
-rather than anything closer to Refract. `ROWS` (110) was left as specified on
-that basis; if a 1080p render on the reference host lands materially above
-the ~10 ms the other 2D looks cost there, bring it down until it does and
-update this note with the real number.
+`pyre` and `emberstorm` are the only two modules that set `ctx.filter`, and
+that blur on the flame tongues is essentially their whole cost — a fire
+silhouette with a hard edge reads as cut paper, so it is not optional. Drawn at
+full size it measured 152 ms a frame for the look and 221 ms for the
+background, against about 17 ms for everything else in the frame put together;
+the pairing came to 390 ms. Both now draw their tongues into a third-size
+buffer and scale it back up, which is what brings the pairing to the 73.5 ms
+above. A blur is a low-pass filter, so the detail a third-size buffer discards
+is detail the blur was about to destroy: the frames are indistinguishable.
+`FLAME_SCALE` in each module is the knob if it needs to go further.
 
-Speed is not really the point — with the in-page encoder overlapping the draw,
-1080p goes from 98 fps to about 139, because encoding becomes the floor. The
-point is that a heavy per-pixel shader costs *less* than the Canvas2D looks, so
-effects that were unaffordable stop being so: `refract`'s bloom is a real
-two-pass blur, where `burn` has to approximate one with ten masks thresholded at
-init.
-
-`refract` is the one look that wants the GPU. On software it costs about 4.5x
-what the others do, and almost all of that is one fixed cost: getting a WebGL
-frame out at all is ~9 ms on SwiftShader whatever is drawn, and its five passes
-add the rest. It still renders correctly in the container, just slowly. (There
-is no shortcut around it — capturing straight from the GL canvas measures 9.33
-ms against the 9.47 ms of going through the 2D one, so the blit is not the
-cost; WebGL on a CPU rasteriser is.)
+Everything else sits in a band between about 12 and 22 ms, which is the same
+shape of cost as the old Canvas2D catalogue. `wake` is the most expensive of
+the rest on the GPU because Bloodtide draws some 370 rects a frame for the sea
+and its glitter path, and rect count is the one thing the GPU does not make
+free.
 
 **Two caveats, both measured rather than assumed.**
 
@@ -394,21 +401,27 @@ Frame `i` still depends on nothing but `i`, which is the property that matters,
 but the two rasterisers do not agree pixel-for-pixel and different GPU vendors
 will not either.
 
-And `orbit` and `shear` are not order-stable under `--gpu` — nor, independent
-of which look draws on top of it, is the `grid` background. Chromium's
-accelerated 2D canvas carries something between draws: Shear's frame 150 comes
-out one way when drawn four times running and another when 149 is drawn before
-each one — settled both ways, not a warm-up. The deltas are 3 for Orbit and 121
-across 12% of the frame for Shear; `burn`, `refract` and `tide` are exact
-either way, and so are `drift`, `nebula`, `rays` and `dust` as backgrounds.
-Grid was found the same way `burn` proved it isn't at fault: `burn` over
-`grid` still drifts on the GPU, which isolates the instability to the
-background's own strokes rather than to whatever look is compositing over it.
+And `bloodtide` and `smelt` are not order-stable under `--gpu`, independent of
+which look draws on top of them. Chromium's accelerated 2D canvas carries
+something between draws: both come out one way walked to in order and another
+entered cold, at frames 2 and 92 of the test track, reproducibly across runs
+rather than as a warm-up. The likely cause in both is the radial gradient each
+rebuilds every frame with a centre and radius that move with the music —
+Bloodtide's corona around the moon, Smelt's splash where each stream lands.
+
+No look is unstable on its own. The whole 5x5 matrix was walked to establish
+that: every look is exact under both rasterisers over every background that is
+itself clean, which is what isolates the fault to those two backgrounds rather
+than to whatever is compositing over them. `pyre` was the one to suspect, being
+half of the only pair that blurs, and it measured clean.
+
 A straight sequential render is fine either way; what stops matching is
 `--preview` and the contact sheet against the same frames of a full render.
 `render.py` says so when you combine an unstable look or background with
 `--gpu`, and `tests/test_determinism.py` skips exactly those combinations
-from the same two lists in `render.py`, so the two cannot drift.
+from the same two lists in `render.py`, so the two cannot drift. The look
+tests pin `choke` rather than falling through to the default background, so a
+look is judged on its own draw path and not on `smelt`'s.
 
 ## What drives what
 

@@ -8,21 +8,27 @@
  *
  * There is no "flat" or "none" entry: every render is meant to come out on a
  * chosen field, never dead ground, so that option does not exist to pick.
+ *
+ * All five are built from the baked sheets in `viz/fields.js` — plume, cloud
+ * and ray sheets that wrap, particle tables with analytic motion, and
+ * midpoint-displacement bolts seeded from the frame index of the strike. The
+ * expensive half runs once in `init`; a frame costs a handful of blits.
  */
-import * as drift from "./drift.js";
-import * as dust from "./dust.js";
-import * as grid from "./grid.js";
-import * as nebula from "./nebula.js";
-import * as rays from "./rays.js";
+import * as bloodtide from "./bloodtide.js";
+import * as choke from "./choke.js";
+import * as emberstorm from "./emberstorm.js";
+import * as smelt from "./smelt.js";
+import * as storm from "./storm.js";
 
 export const BACKGROUNDS = {
-  [drift.id]: drift,
-  [nebula.id]: nebula,
-  [rays.id]: rays,
-  [dust.id]: dust,
-  [grid.id]: grid,
+  [bloodtide.id]: bloodtide,
+  [emberstorm.id]: emberstorm,
+  [choke.id]: choke,
+  [smelt.id]: smelt,
+  [storm.id]: storm,
 };
 
-// the quietest of the five, so an existing render changes the least
-export const DEFAULT_BACKGROUND = drift.id;
+// the partner of DEFAULT_LOOK: `chrome` hangs the record over a mirror pool,
+// and Smelt is the field that puts something under it worth reflecting
+export const DEFAULT_BACKGROUND = smelt.id;
 export const BACKGROUND_IDS = Object.keys(BACKGROUNDS);

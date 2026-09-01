@@ -67,15 +67,15 @@ class Output:
 
 #: the looks viz/looks/index.js registers. Kept here as well so a typo is a
 #: 422 at upload time rather than a blank video forty minutes later.
-LOOKS = ("burn", "orbit", "refract", "shear", "tide")
+LOOKS = ("wake", "pyre", "miasma", "chrome", "totem")
 
-Look = Literal["burn", "orbit", "refract", "shear", "tide"]
+Look = Literal["wake", "pyre", "miasma", "chrome", "totem"]
 
 #: the backgrounds viz/backgrounds/index.js registers. Same reasoning as
 #: LOOKS: a typo here is a 422, not a render that quietly used the default.
-BACKGROUNDS = ("drift", "nebula", "rays", "dust", "grid")
+BACKGROUNDS = ("bloodtide", "emberstorm", "choke", "smelt", "storm")
 
-Background = Literal["drift", "nebula", "rays", "dust", "grid"]
+Background = Literal["bloodtide", "emberstorm", "choke", "smelt", "storm"]
 
 #: the services viz/services.js registers. Order here has no effect on the
 #: badge row — that always follows the registry in services.js — but it does
@@ -105,8 +105,8 @@ class JobParams(BaseModel):
     artist: str = Field(default="", max_length=120)
     crf: int = Field(default=16, ge=0, le=51)
     preset: Preset = "slow"
-    look: Look = "burn"
-    background: Background = "drift"
+    look: Look = "chrome"
+    background: Background = "smelt"
     services: list[Service] = Field(default_factory=list, max_length=len(SERVICES))
     bands: int = Field(default=24, ge=4, le=64)
     hpss: bool = True

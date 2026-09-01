@@ -44,8 +44,8 @@ pytestmark = pytest.mark.skipif(
     playwright_missing, reason="playwright is not installed"
 )
 
-LOOKS = ("burn", "orbit", "refract", "shear", "tide")
-BACKGROUND_IDS = ("drift", "nebula", "rays", "dust", "grid")
+LOOKS = ("wake", "pyre", "miasma", "chrome", "totem")
+BACKGROUND_IDS = ("bloodtide", "emberstorm", "choke", "smelt", "storm")
 FPS = 60
 FRAMES = 240
 
@@ -175,15 +175,16 @@ PROBE = (0, 1, 2, 91, 92, 150, 239)
 
 
 def skip_if_known_gpu_drift(page, look, background=None):
-    """Orbit and Shear are not order-stable once Chromium rasterizes on the GPU;
-    neither is the Grid background, independent of which look draws over it.
+    """Bloodtide and Smelt are not order-stable once Chromium rasterizes on the
+    GPU, independent of which look draws over them. No look is: the whole 5x5
+    matrix was walked on an RTX 4060 Ti and every look came out exact over
+    every background that is itself clean.
 
     Not their fault and not fixable here: the accelerated 2D canvas caches
-    something between draws, so Shear's frame 150 comes out one way when it is
-    drawn four times running and another when 149 is drawn before each one —
-    settled both times, not a warm-up. Measured deltas are 3 for Orbit and 121
-    across 12% of the frame for Shear; Burn, Refract and Tide are exact either
-    way, and so are Drift, Nebula, Rays and Dust as backgrounds.
+    something between draws — for both of them, most likely the per-frame
+    radial gradient whose centre and radius move with the music. Settled, not
+    a warm-up: the same frame comes out one way walked to in order and another
+    entered cold, reproducibly, at frames 2 and 92 of the test track.
 
     The lists live in render.py, next to the warning the renderer prints, so
     this cannot quietly disagree with what users are told.
@@ -197,13 +198,23 @@ def skip_if_known_gpu_drift(page, look, background=None):
                     f"render.py warns about it instead")
 
 
+#: Pinned under the look tests instead of letting them fall through to the
+#: default background. A look has to be isolated from the field it draws on to
+#: be judged, and the default (`smelt`) is one of the two that are not
+#: order-stable under GPU raster — left implicit, every look would fail the GPU
+#: parametrisation for its background's reasons rather than its own. Choke is
+#: exact under all five looks on both rasterizers.
+LOOK_TEST_BACKGROUND = "choke"
+
+
 @pytest.mark.parametrize("look", LOOKS)
 def test_a_frame_is_the_same_however_you_arrive_at_it(page, look, request):
     if "gpu" in request.node.callspec.id:
-        skip_if_known_gpu_drift(page, look)
+        skip_if_known_gpu_drift(page, look, LOOK_TEST_BACKGROUND)
     p, port, _ = page
     p.goto(f"http://127.0.0.1:{port}/visualizer.html"
-           f"?w=320&h=180&art=artwork.png&look={look}&title=T&artist=A")
+           f"?w=320&h=180&art=artwork.png&look={look}"
+           f"&bg={LOOK_TEST_BACKGROUND}&title=T&artist=A")
     p.wait_for_function("window.vizReady === true", timeout=60_000)
     assert p.evaluate("window.meta.look") == look
 
@@ -242,7 +253,7 @@ def test_the_look_actually_animates(page, look):
 def test_rendering_the_same_frame_twice_changes_nothing(page):
     p, port, _ = page
     p.goto(f"http://127.0.0.1:{port}/visualizer.html"
-           f"?w=320&h=180&art=artwork.png&look=orbit&title=T&artist=A")
+           f"?w=320&h=180&art=artwork.png&look=totem&title=T&artist=A")
     p.wait_for_function("window.vizReady === true", timeout=60_000)
     p.evaluate("i => window.renderFrame(i)", 100)
     once = p.evaluate(HASH_JS)
@@ -285,15 +296,15 @@ def test_a_fresh_page_draws_the_same_frame_as_a_used_one(page, look):
 def test_every_background_is_a_function_of_the_frame_index(page, background, request):
     """The same contract test_a_frame_is_the_same_however_you_arrive_at_it
     proves for every look, run once per background instead — one fixed look
-    (`burn`, the only one exact under both rasterizers) is enough to isolate
-    the background's own draw path without multiplying the full look matrix
-    by five.
+    (`chrome`, the plainest of the five: no blur filter, no seeded bolts, no
+    rng at all in its draw path) is enough to isolate the background's own
+    draw path without multiplying the full look matrix by five.
     """
     if "gpu" in request.node.callspec.id:
-        skip_if_known_gpu_drift(page, "burn", background)
+        skip_if_known_gpu_drift(page, "chrome", background)
     p, port, _ = page
     p.goto(f"http://127.0.0.1:{port}/visualizer.html"
-           f"?w=320&h=180&art=artwork.png&look=burn&bg={background}&title=T&artist=A")
+           f"?w=320&h=180&art=artwork.png&look=chrome&bg={background}&title=T&artist=A")
     p.wait_for_function("window.vizReady === true", timeout=60_000)
     assert p.evaluate("window.meta.background") == background
 

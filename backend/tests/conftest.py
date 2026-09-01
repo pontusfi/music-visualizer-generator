@@ -22,7 +22,7 @@ def pipeline_dir(tmp_path: Path) -> Path:
     (viz / "looks").mkdir(parents=True)
     (viz / "main.js").write_text("// stub\n")
     (viz / "signals.js").write_text("// stub\n")
-    (viz / "looks" / "burn.js").write_text("// stub\n")
+    (viz / "looks" / "chrome.js").write_text("// stub\n")
     return d
 
 

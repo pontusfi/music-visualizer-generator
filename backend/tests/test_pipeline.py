@@ -184,10 +184,10 @@ class TestLookParameter:
             artist="",
             crf=16,
             preset="slow",
-            look="orbit",
+            look="pyre",
         )
         assert "--look" in cmd
-        assert cmd[cmd.index("--look") + 1] == "orbit"
+        assert cmd[cmd.index("--look") + 1] == "pyre"
 
     def test_render_command_still_works_without_one(self, tmp_path):
         cmd = pipeline.render_command(
@@ -230,9 +230,9 @@ class TestBackgroundAndServiceParameters:
         return pipeline.render_command(**kwargs)
 
     def test_render_command_passes_the_background_through(self, tmp_path):
-        cmd = self._cmd(tmp_path, background="nebula")
+        cmd = self._cmd(tmp_path, background="choke")
         assert "--background" in cmd
-        assert cmd[cmd.index("--background") + 1] == "nebula"
+        assert cmd[cmd.index("--background") + 1] == "choke"
 
     def test_render_command_still_works_without_a_background(self, tmp_path):
         assert "--background" not in self._cmd(tmp_path)

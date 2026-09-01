@@ -261,7 +261,7 @@ describe("looks", () => {
   it("offers exactly the ones the pipeline registers", () => {
     // must stay in step with viz/looks/index.js and schemas.LOOKS — a look in
     // the picker that the renderer does not know produces a blank video
-    expect(LOOKS.map((l) => l.id)).toEqual(["burn", "orbit", "shear", "refract", "tide"]);
+    expect(LOOKS.map((l) => l.id)).toEqual(["wake", "pyre", "miasma", "chrome", "totem"]);
   });
 
   it("names and describes each one for the picker", () => {
@@ -271,21 +271,21 @@ describe("looks", () => {
     }
   });
 
-  it("opens on the signature look", () => {
-    expect(DEFAULT_SETTINGS.look).toBe("burn");
+  it("opens on the look that keeps the artwork most legible", () => {
+    expect(DEFAULT_SETTINGS.look).toBe("chrome");
   });
 
   it("sends the look with the job", () => {
-    const form = toFormData({ ...DEFAULT_SETTINGS, look: "orbit" }, image, audio);
-    expect(form.get("look")).toBe("orbit");
+    const form = toFormData({ ...DEFAULT_SETTINGS, look: "pyre" }, image, audio);
+    expect(form.get("look")).toBe("pyre");
   });
 
   it("keeps the look out of the output presets", () => {
     // resolution and quality are what a preset speaks for; which design gets
     // drawn is an orthogonal choice and must survive picking one
     const preset = OUTPUT_PRESETS[2];
-    expect(applyPreset({ ...DEFAULT_SETTINGS, look: "shear" }, preset).look).toBe("shear");
-    expect(matchPreset({ ...DEFAULT_SETTINGS, look: "shear" })).toBe("deliver");
+    expect(applyPreset({ ...DEFAULT_SETTINGS, look: "totem" }, preset).look).toBe("totem");
+    expect(matchPreset({ ...DEFAULT_SETTINGS, look: "totem" })).toBe("deliver");
   });
 });
 
@@ -293,11 +293,11 @@ describe("backgrounds", () => {
   it("offers exactly the ones the pipeline registers", () => {
     // must stay in step with viz/backgrounds/index.js and schemas.BACKGROUNDS
     expect(BACKGROUNDS.map((b) => b.id)).toEqual([
-      "drift",
-      "nebula",
-      "rays",
-      "dust",
-      "grid",
+      "bloodtide",
+      "emberstorm",
+      "choke",
+      "smelt",
+      "storm",
     ]);
   });
 
@@ -308,19 +308,19 @@ describe("backgrounds", () => {
     }
   });
 
-  it("opens on the quietest background, so an existing render changes least", () => {
-    expect(DEFAULT_SETTINGS.background).toBe("drift");
+  it("opens on the background paired with the default look", () => {
+    expect(DEFAULT_SETTINGS.background).toBe("smelt");
   });
 
   it("sends the background with the job", () => {
-    const form = toFormData({ ...DEFAULT_SETTINGS, background: "grid" }, image, audio);
-    expect(form.get("background")).toBe("grid");
+    const form = toFormData({ ...DEFAULT_SETTINGS, background: "storm" }, image, audio);
+    expect(form.get("background")).toBe("storm");
   });
 
   it("keeps the background out of the output presets, for every preset", () => {
     for (const preset of OUTPUT_PRESETS) {
-      const next = applyPreset({ ...DEFAULT_SETTINGS, background: "nebula" }, preset);
-      expect(next.background).toBe("nebula");
+      const next = applyPreset({ ...DEFAULT_SETTINGS, background: "choke" }, preset);
+      expect(next.background).toBe("choke");
     }
   });
 });

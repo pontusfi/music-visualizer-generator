@@ -227,12 +227,12 @@ class TestBuildUrlBackgroundAndServices:
 
     def test_carries_the_background(self):
         url = render.build_url(8000, 1920, 1080, "T", "A", "artwork.png",
-                               background="nebula")
-        assert "bg=nebula" in url
+                               background="choke")
+        assert "bg=choke" in url
 
     def test_defaults_the_background_to_drift(self):
         url = render.build_url(8000, 1920, 1080, "T", "A", "artwork.png")
-        assert "bg=drift" in url
+        assert "bg=smelt" in url
 
     def test_carries_services_percent_encoded(self):
         url = render.build_url(8000, 1920, 1080, "T", "A", "artwork.png",
@@ -340,52 +340,82 @@ class TestGpuCaution:
     render — so the caller is told.
     """
 
-    def test_no_caution_without_the_gpu_flag(self):
+    # The two lists are measurements of specific modules on specific hardware,
+    # and the looks they used to name no longer exist. So these drive the
+    # mechanism off substituted lists rather than off whatever is registered
+    # today: the logic is what has to keep working when the next measurement
+    # adds an entry, and a test naming real ids would have to be rewritten
+    # every time the catalogue turns over.
+
+    @pytest.fixture
+    def listed(self, monkeypatch):
+        monkeypatch.setattr(render, "GPU_UNSTABLE_LOOKS", ("unstablelook",))
+        monkeypatch.setattr(render, "GPU_UNSTABLE_BACKGROUNDS", ("unstablebg",))
+
+    def test_no_caution_without_the_gpu_flag(self, listed):
         # software raster is exact for every look; the whole issue is the flag
-        for look in render.GPU_UNSTABLE_LOOKS:
-            assert render.gpu_caution(look, gpu=False) is None
-        for background in render.GPU_UNSTABLE_BACKGROUNDS:
-            assert render.gpu_caution("burn", gpu=False, background=background) is None
+        assert render.gpu_caution("unstablelook", gpu=False) is None
+        assert render.gpu_caution("steady", gpu=False, background="unstablebg") is None
 
-    @pytest.mark.parametrize("look", ["burn", "refract", "tide"])
-    def test_the_stable_looks_say_nothing(self, look):
-        assert render.gpu_caution(look, gpu=True) is None
+    def test_a_look_that_is_not_listed_says_nothing(self, listed):
+        assert render.gpu_caution("steady", gpu=True) is None
 
-    @pytest.mark.parametrize("look", ["orbit", "shear"])
-    def test_the_unstable_looks_are_named(self, look):
-        msg = render.gpu_caution(look, gpu=True)
-        assert msg is not None and look in msg
+    def test_a_listed_look_is_named(self, listed):
+        msg = render.gpu_caution("unstablelook", gpu=True)
+        assert msg is not None and "unstablelook" in msg
 
-    @pytest.mark.parametrize("background", ["drift", "nebula", "rays", "dust"])
-    def test_the_stable_backgrounds_say_nothing(self, background):
-        assert render.gpu_caution("burn", gpu=True, background=background) is None
+    def test_a_background_that_is_not_listed_says_nothing(self, listed):
+        assert render.gpu_caution("steady", gpu=True, background="steadybg") is None
 
-    def test_the_unstable_background_is_named(self):
-        msg = render.gpu_caution("burn", gpu=True, background="grid")
-        assert msg is not None and "grid" in msg
+    def test_a_listed_background_is_named(self, listed):
+        msg = render.gpu_caution("steady", gpu=True, background="unstablebg")
+        assert msg is not None and "unstablebg" in msg
 
-    def test_an_unstable_look_over_a_stable_background_still_warns(self):
-        msg = render.gpu_caution("shear", gpu=True, background="drift")
-        assert msg is not None and "shear" in msg
+    def test_a_listed_look_over_a_clean_background_still_warns(self, listed):
+        msg = render.gpu_caution("unstablelook", gpu=True, background="steadybg")
+        assert msg is not None and "unstablelook" in msg
 
-    def test_a_stable_look_over_an_unstable_background_still_warns(self):
-        msg = render.gpu_caution("burn", gpu=True, background="grid")
-        assert msg is not None and "grid" in msg
-
-    def test_both_at_once_name_both(self):
-        msg = render.gpu_caution("shear", gpu=True, background="grid")
+    def test_both_at_once_name_both(self, listed):
+        msg = render.gpu_caution("unstablelook", gpu=True, background="unstablebg")
         assert msg is not None
-        assert "shear" in msg and "grid" in msg
+        assert "unstablelook" in msg and "unstablebg" in msg
 
-    def test_the_message_says_what_is_actually_at_risk(self):
+    def test_the_message_says_what_is_actually_at_risk(self, listed):
         # not "wrong output" — the frames are fine, they just stop being
         # comparable between a preview and a full render
-        msg = render.gpu_caution("shear", gpu=True).lower()
+        msg = render.gpu_caution("unstablelook", gpu=True).lower()
         assert "preview" in msg
+
+    def test_the_message_does_not_send_the_caller_to_a_look_that_is_gone(self, listed):
+        # it used to recommend `--look refract`, which was removed with the
+        # rest of the old catalogue; the remaining advice is to drop --gpu
+        msg = render.gpu_caution("unstablelook", gpu=True)
+        assert "--gpu" in msg
+        for dead in ("refract", "burn", "orbit", "shear", "tide"):
+            assert dead not in msg
 
     def test_an_unknown_look_is_not_warned_about(self):
         # --look is validated elsewhere; guessing here would be noise
         assert render.gpu_caution("kaleidoscope", gpu=True) is None
 
     def test_an_unknown_background_is_not_warned_about(self):
-        assert render.gpu_caution("burn", gpu=True, background="starfield") is None
+        assert render.gpu_caution("chrome", gpu=True, background="starfield") is None
+
+    def test_the_lists_hold_what_was_measured(self):
+        # per-module measurements on an RTX 4060 Ti, walking the whole 5x5
+        # matrix: no look drifts on its own, and two backgrounds drift under
+        # every look. tests/test_determinism.py xfails from these same two
+        # names, so an edit here without a measurement behind it turns into a
+        # failing GPU run rather than a quietly wrong warning.
+        assert render.GPU_UNSTABLE_LOOKS == ()
+        assert render.GPU_UNSTABLE_BACKGROUNDS == ("bloodtide", "smelt")
+
+    def test_every_listed_id_is_one_the_server_accepts(self):
+        # a name that no longer exists in the catalogue warns about nothing
+        # and hides the module that replaced it
+        from backend.app import schemas
+
+        for look in render.GPU_UNSTABLE_LOOKS:
+            assert look in schemas.LOOKS
+        for background in render.GPU_UNSTABLE_BACKGROUNDS:
+            assert background in schemas.BACKGROUNDS

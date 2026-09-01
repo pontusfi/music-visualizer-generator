@@ -34,7 +34,7 @@ A single test, in each:
 
 ```bash
 python -m pytest backend/tests/test_pipeline.py::TestParseProgress -q
-python -m pytest tests/test_determinism.py -k "burn and software" -q
+python -m pytest tests/test_determinism.py -k "chrome and software" -q
 node --test --test-name-pattern "counts back before the first beat" "viz/**/*.test.js"
 cd frontend && npx vitest run src/preview/paint.test.ts -t "keeps title larger"
 ```
@@ -107,6 +107,16 @@ depends on frame `i-1`. `tests/test_determinism.py` enforces this by checking
 that walking the track in order gives byte-identical frames to jumping straight
 to them.
 
+The same rule is why a background's ground fill has to cover **every** pixel:
+nothing clears the canvas between frames. A sky and a sea that meet on a
+fractional row each cover it partially, and the remainder of the previous frame
+shows through — which is a determinism failure, not just a cosmetic one. Snap
+fills that tile the frame to whole pixels.
+
+`viz/fields.js` holds the shared builders the atmospheric backgrounds are made
+of — blob and ray sheets that wrap, particle tables, midpoint-displacement
+bolts. It is init-time only; nothing in it may be called from a draw path.
+
 ### Registries that must not drift
 
 A look and a background are the same shape — `{ id, name, draw(ctx, sig, assets), init?(assets) }`
@@ -163,7 +173,16 @@ burn-in far larger than the render produced. If you change `CREDIT.artist` or
   output depend on the machine. `GPU_UNSTABLE_LOOKS` / `GPU_UNSTABLE_BACKGROUNDS`
   in `render.py` list the combinations that are not order-stable under GPU
   raster; `tests/test_determinism.py` skips from those same two lists, so they
-  cannot drift apart. Keep them in sync if you measure a new one.
+  cannot drift apart. Keep them in sync if you measure a new one. Currently
+  `bloodtide` and `smelt`, and no looks. Because the default background is one
+  of the two, the look tests pin `choke` explicitly rather than falling through
+  to it — otherwise every look fails the GPU run for its background's reasons.
+- **`ctx.filter` is the expensive thing.** Only `pyre` and `emberstorm` use it,
+  for the flame tongues, and at full size the blur cost more than everything
+  else in the frame put together. Both draw their tongues into a third-size
+  buffer (`FLAME_SCALE`) and scale it back up. Note that a canvas filter is
+  specified in device pixels and ignores the transform, so a scaled buffer has
+  to scale the blur radius by hand.
 - **Config is environment-only**, all `MVG_*`, in `backend/app/config.py`.
 
 ### Commit style
