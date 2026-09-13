@@ -47,6 +47,15 @@ describe("heaveOf", () => {
     }
   });
 
+  it("lets the slow signals lead, so the sea does not flinch on every kick", () => {
+    // the swell is geometry, and geometry driven by a one-frame attack reads
+    // as a twitch rather than as water
+    const fromKick = heaveOf(quiet({ kick: 1 })) - 1;
+    const fromSlow = heaveOf(quiet({ wall: 1, arc: 1 })) - 1;
+    assert.ok(fromKick < fromSlow * 0.5,
+      `kick contributes ${fromKick} against ${fromSlow} from wall and arc`);
+  });
+
   it("rises with the low end", () => {
     assert.ok(heaveOf(quiet({ kick: 1 })) > heaveOf(quiet({ kick: 0.5 })));
     assert.ok(heaveOf(quiet({ kick: 0.5 })) > heaveOf(quiet()));

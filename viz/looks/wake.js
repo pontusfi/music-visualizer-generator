@@ -13,6 +13,12 @@
  * off that water crosses the face once a bar, and the scrim comes off
  * completely on a downbeat rather than merely thinning. Nothing here carries
  * between frames.
+ *
+ * What the plate and its reflection are *sized and moved* by is `rms`, `wall`
+ * and `arc` — envelopes that take a bar or more to travel. The fast ones are
+ * spent on brightness: the scrim, the rim and the burn. A position driven by
+ * `kick` twitches once per beat, which reads as the render stuttering rather
+ * than as the record answering the music.
  */
 
 import { CREDIT, CREDIT_FIT, creditAlpha, fitSize } from "../credit.js";
@@ -56,6 +62,22 @@ export function sweepX(barPhase, w, h) {
 }
 
 /**
+ * How far the water under the record is running sideways.
+ *
+ * Taken as a sine of the beat rather than off `beatPhase` directly. The phase
+ * is a sawtooth, so `(beatPhase - 0.5)` snapped from one extreme to the other
+ * in a single frame at every beat and threw the whole reflection across —
+ * which read as the picture glitching rather than as water moving. A sine is
+ * zero at both ends of the beat and joins up smoothly across the wrap.
+ *
+ * Weighted by `wall` and not `kick`: this is geometry, and geometry driven by
+ * a one-frame attack twitches.
+ */
+export function beatShear(s) {
+  return Math.sin(s.beatPhase * Math.PI * 2) * s.wall * 0.6;
+}
+
+/**
  * One slice of the reflection: how far it has slid, how far it has stretched,
  * and how much of it survives at that depth.
  *
@@ -93,7 +115,7 @@ export function draw(ctx, s, a) {
 
   // --- composition: the plate meets the water ------------------------------
   const seat = a.seat;
-  const scale = seat.scale * 0.74 * (1 + a.progress * 0.02) * (1 + s.kick * 0.014);
+  const scale = seat.scale * 0.74 * (1 + a.progress * 0.02) * (1 + s.rms * 0.012);
   const w = layout.w * scale;
   const h = layout.h * scale;
   // right of centre: the moon owns the left of the frame
@@ -149,11 +171,11 @@ export function draw(ctx, s, a) {
   // --- the reflection -------------------------------------------------------
   const sliceH = h / SLICES;
   const srcH = art.height / SLICES;
-  const swell = 1 + s.kick * 1.6 + s.wall * 0.7;
+  const swell = 1 + s.rms * 0.8 + s.wall * 0.9 + s.kick * 0.5;
   const tear = decay(s.sinceOnset, TEAR_LIFE) * s.hit;
-  // the water is running one way under the record: the deeper slices lag the
-  // shallow ones sideways instead of only rippling in place
-  const shear = (s.beatPhase - 0.5) * s.kick;
+  // the water runs one way under the record, the deeper slices lagging the
+  // shallow ones
+  const shear = beatShear(s);
   for (let n = 0; n < SLICES; n += 1) {
     const { dx, stretch, alpha } = sliceAt(n, SLICES, s.i, unit, swell, tear, shear);
     ctx.globalAlpha = alpha * (0.6 + s.rms * 0.6);
@@ -174,7 +196,7 @@ export function draw(ctx, s, a) {
     const cy = horizon + h * (0.06 + t * 0.8);
     const cw = w * (0.10 + Math.abs(Math.sin(t * 9 + s.i * 0.04)) * 0.34);
     const cx = x + w * 0.5 + Math.sin(t * 17 - s.i * 0.055) * w * 0.44;
-    ctx.globalAlpha = (0.05 + s.rms * 0.11 + s.crack * 0.07) * (1 - t) ;
+    ctx.globalAlpha = (0.05 + s.rms * 0.13 + s.arc * 0.05) * (1 - t);
     ctx.fillRect(cx - cw * 0.5, cy, cw, Math.max(1, unit * 0.0018));
   }
   ctx.globalAlpha = 1;

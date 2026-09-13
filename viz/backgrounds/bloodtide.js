@@ -23,6 +23,7 @@
 import { off } from "../assets.js";
 import { blobSheet, boltPath, particles, scroll, strokeBolt } from "../fields.js";
 import { css, shiftHue } from "../palette.js";
+import { smoothstep } from "../rng.js";
 import { decay } from "../signals.js";
 
 export const id = "bloodtide";
@@ -69,7 +70,12 @@ const mix = (a, b, t) => a.map((v, n) => v + (b[n] - v) * t);
  * whole picture away as a gradient.
  */
 export function heaveOf(s) {
-  return Math.min(HEAVE_MAX, 1 + s.kick * 1.1 + s.wall * 0.45 + s.arc * 0.35);
+  // Weighted toward the signals that move slowly. `kick` has a one-frame
+  // attack, and driving the swell's amplitude from it made the whole sea
+  // flinch on every beat; `wall` and `arc` change over a riff and a phrase, so
+  // the water builds and drops instead of twitching. The kick still has a
+  // share — the sea should answer the drums — just not the largest one.
+  return Math.min(HEAVE_MAX, 1 + s.kick * 0.45 + s.wall * 0.75 + s.arc * 0.6);
 }
 
 /**
@@ -137,7 +143,10 @@ export function sprayAt(p, age, life, lift) {
  * first.
  */
 export function moonPlace(s, progress, base, W, H) {
-  const d = base * (1 + s.kick * 0.10 + s.wall * 0.035);
+  // Mostly `rms` and `wall`. A disc that jumped ten percent on every kick read
+  // as a strobe rather than as a body breathing; the kick's share of the size
+  // is small now and it does its work in the corona's brightness instead.
+  const d = base * (1 + s.rms * 0.05 + s.wall * 0.03 + s.kick * 0.025);
   return {
     x: W * 0.29 + Math.sin(progress * Math.PI) * W * 0.03,
     y: H * HORIZON - d * (0.34 + progress * 0.10)
@@ -259,11 +268,13 @@ export function init(a) {
 
   // cinders climbing the sky, pre-sorted into tiers so the draw path can put
   // each tier down as one batched path instead of 54 separate rects
+  // slow: at the top of this range a cinder still takes ten seconds to cross
+  // the sky, which is the difference between atmosphere and confetti
   const drift = particles(r, EMBERS, {
-    speed: [0.0008, 0.0042],
-    size: [0.5, 2.0],
+    speed: [0.00030, 0.00110],
+    size: [0.5, 1.7],
     dim: [0.12, 1],
-    sway: [0.006, 0.034],
+    sway: [0.004, 0.018],
   });
   a.tideEmbers = Array.from({ length: EMBER_TIERS }, (_, n) =>
     drift.filter((_p, idx) => idx % EMBER_TIERS === n));
@@ -330,17 +341,21 @@ export function draw(ctx, s, a) {
   for (let tier = 0; tier < EMBER_TIERS; tier += 1) {
     const set = a.tideEmbers[tier];
     if (!set.length) continue;
-    ctx.globalAlpha = Math.min(0.42, (0.12 + tier * 0.07) * (0.55 + s.rms * 0.85));
+    // `arc` rather than `rms`: an eight-second envelope raises and lowers the
+    // field over a phrase instead of flickering it on every bar
+    ctx.globalAlpha = Math.min(0.15, (0.045 + tier * 0.028) * (0.6 + s.arc * 0.55));
     ctx.beginPath();
     for (const p of set) {
-      // rising and wrapping analytically: the cinder at frame i does not
-      // depend on where it was at frame i-1
-      const up = (((p.y - s.i * p.speed * (1 + s.drive)) % 1) + 1) % 1;
-      const x = p.x + Math.sin(s.i * 0.01 + p.phase) * p.sway;
+      // Rising and wrapping analytically: the cinder at frame i does not
+      // depend on where it was at frame i-1. The rate takes no signal at all —
+      // a drifting field that speeds up on the loud parts reads as the
+      // background lurching.
+      const up = (((p.y - s.i * p.speed) % 1) + 1) % 1;
+      const x = p.x + Math.sin(s.i * 0.005 + p.phase) * p.sway;
       const px = ((x % 1) + 1) % 1 * W;
       const py = up * edge;
       ctx.moveTo(px, py);
-      ctx.lineTo(px, py - p.size * (H / 1080) * 2.2);
+      ctx.lineTo(px, py - p.size * (H / 1080) * 1.6);
     }
     ctx.stroke();
   }
@@ -373,7 +388,7 @@ export function draw(ctx, s, a) {
   ctx.drawImage(a.tideMoonDark, mx - d / 2, my - d / 2, d, d);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = Math.min(0.78, s.kick * 0.6 + s.drive * 0.24 + s.downbeatPulse * 0.2);
+  ctx.globalAlpha = Math.min(0.72, s.wall * 0.34 + s.arc * 0.22 + s.kick * 0.26);
   ctx.drawImage(a.tideVeins, mx - d / 2, my - d / 2, d, d);
   ctx.globalAlpha = 1;
 
@@ -382,10 +397,14 @@ export function draw(ctx, s, a) {
   if (ring > 0.01) {
     const spread = 1 - ring;
     ctx.strokeStyle = a.tideMoonCss;
-    ctx.lineWidth = Math.max(1, H * 0.005 * ring);
-    ctx.globalAlpha = ring * 0.45;
+    ctx.lineWidth = Math.max(1, H * 0.0035 * ring);
+    // a hump rather than a decay: the ring fades up out of nothing and back
+    // into it, instead of appearing at full strength on the section's first
+    // frame. It also stays close to the moon now — a ring crossing the whole
+    // sky pulled the eye off the record every time a part changed.
+    ctx.globalAlpha = 4 * ring * (1 - ring) * 0.22;
     ctx.beginPath();
-    ctx.ellipse(mx, my, d * (0.5 + spread * 3.4), d * (0.5 + spread * 3.4) * 0.5,
+    ctx.ellipse(mx, my, d * (0.5 + spread * 1.5), d * (0.5 + spread * 1.5) * 0.5,
       0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = 1;
@@ -395,13 +414,19 @@ export function draw(ctx, s, a) {
   // --- cloud, two decks -----------------------------------------------------
   // No clip: the sea fill below covers everything these could spill onto, and
   // one fewer save/restore is one fewer way to leave a clip in force.
-  const gust = decay(s.sinceOnset, 40) * s.hit * W * 0.04;
-  ctx.globalAlpha = Math.min(1, 0.75 + s.arc * 0.3);
-  scroll(ctx, a.tideClouds, -s.i * 0.42 * (1 + s.drive * 0.8) - gust,
-    Math.sin(s.i * 0.0013) * H * 0.008, W * 0.9, H * 0.45);
-  ctx.globalAlpha = Math.min(1, 0.5 + s.arc * 0.25 + s.wall * 0.2);
-  scroll(ctx, a.tideDeck, -s.i * 0.95 * (1 + s.drive * 0.8) + gust * 0.5,
-    Math.sin(s.i * 0.0021 + 1.7) * H * 0.006, W * 0.55, H * 0.28);
+  // Both decks drift at a rate that is a function of the frame index and
+  // nothing else. Modulating a scroll rate with the music makes the whole sky
+  // accelerate and brake behind the record, and a gust on every transient
+  // shoves it sideways — both pull the eye off the subject, which is the one
+  // thing this layer must not do. The music is allowed to change how much of
+  // the cloud you can see, never how fast it is going, and it does that
+  // through `arc`, which moves over about eight seconds.
+  ctx.globalAlpha = Math.min(1, 0.7 + s.arc * 0.22);
+  scroll(ctx, a.tideClouds, -s.i * 0.15,
+    Math.sin(s.i * 0.0009) * H * 0.005, W * 0.9, H * 0.45);
+  ctx.globalAlpha = Math.min(1, 0.34 + s.arc * 0.16);
+  scroll(ctx, a.tideDeck, -s.i * 0.26,
+    Math.sin(s.i * 0.0014 + 1.7) * H * 0.004, W * 0.55, H * 0.28);
   ctx.globalAlpha = 1;
 
   // --- heat lightning, far right --------------------------------------------
@@ -409,14 +434,16 @@ export function draw(ctx, s, a) {
   // right of the horizon is the emptiest part of the frame. Red rather than
   // white, and short, so it reads as weather a long way off over water rather
   // than as Storm's bolt moved house.
-  const strike = decay(s.sinceDownbeat, STRIKE_LIFE) * Math.max(0, s.kick - 0.4) / 0.6;
+  // only the hardest downbeats: at the old threshold it fired most bars, and a
+  // flash in the corner of the frame that often is a metronome, not weather
+  const strike = decay(s.sinceDownbeat, STRIKE_LIFE) * Math.max(0, s.kick - 0.68) / 0.32;
   if (strike > 0.02) {
     const r = a.rng(eventSeed(s.i, s.sinceDownbeat, 7717));
     const x0 = W * (0.62 + r() * 0.34);
     const pts = boltPath(r, x0, horizon - H * (0.16 + r() * 0.12),
       x0 + (r() - 0.5) * W * 0.12, horizon - H * 0.005, W * 0.035, 4);
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = Math.min(1, strike * 0.8);
+    ctx.globalAlpha = Math.min(1, strike * 0.45);
     strokeBolt(ctx, pts, `rgba(${blood.join(",")},0.5)`,
       `rgba(255,150,120,0.85)`, Math.max(1, W * 0.0011));
     ctx.globalAlpha = 1;
@@ -436,11 +463,11 @@ export function draw(ctx, s, a) {
 
   const depth = H - horizon;
   const heave = heaveOf(s);
-  const lift = 1 + s.kick * 0.5 + s.wall * 0.25;
-  // a transient does not just brighten the water, it breaks it: for a dozen
-  // frames the near crests come apart laterally and the glitter scatters with
-  // them
-  const tear = decay(s.sinceOnset, TEAR_LIFE) * s.hit;
+  const lift = 1 + s.rms * 0.35 + s.wall * 0.3;
+  // A transient roughens the water for a dozen frames. `smoothstep` takes the
+  // ends off the linear decay so the chop eases in and out instead of
+  // switching on at full strength and ramping to a corner.
+  const chop = smoothstep(decay(s.sinceOnset, TEAR_LIFE)) * s.hit;
 
   // crests: darker troughs and lit tops, bunched toward the horizon
   ctx.globalCompositeOperation = "lighter";
@@ -452,15 +479,13 @@ export function draw(ctx, s, a) {
     ctx.globalAlpha = (0.04 + wave * 0.10 + s.kick * 0.07 + s.drive * 0.04)
       * (0.35 + t * 1.1) * j * (0.8 + s.arc * 0.45);
     ctx.fillStyle = bloodCss;
-    if (tear > 0.01 && t > 0.45) {
-      // two halves sliding opposite ways, both overhanging the frame edge so
-      // no gap can open at the sides
-      const slip = tear * W * 0.05 * j;
-      ctx.fillRect(-W * 0.1 + slip, y, W * 0.62, bh);
-      ctx.fillRect(W * 0.48 - slip, y, W * 0.62, bh);
-    } else {
-      ctx.fillRect(0, y, W, bh);
-    }
+    // A transient chops the surface rather than cutting it in half. The
+    // earlier version split the band into two sliding rects, which overlapped
+    // in the middle even at rest — under `lighter` that double-drew a bright
+    // seam, and the branch made it appear and vanish on a threshold. The chop
+    // is folded into the band's own offset instead, so it grows out of zero
+    // and dies back into it with nothing to pop.
+    ctx.fillRect(0, y + chop * j * Math.sin(n * 2.3) * depth * 0.010 * t, W, bh);
 
     // the glitter path: dashes clustered on the moon's column, spreading and
     // brightening as the water comes toward the camera
@@ -468,9 +493,12 @@ export function draw(ctx, s, a) {
     for (let k = 0; k < GLINTS; k += 1) {
       const g = a.tideGlints[n * GLINTS + k];
       const writhe = Math.sin(s.i * g.rate + g.phase);
+      // the dash's position and width ride slow signals; the fast ones are
+      // spent on how brightly it catches, which reads as the water flashing
+      // rather than as the dashes jumping
       const gx = mx + g.off * spread + writhe * W * 0.01
-        + tear * g.off * W * 0.03;
-      const gw = W * 0.004 * g.len * (0.5 + t * 3) * (1 + s.kick * 0.9 + tear * 1.2);
+        + chop * g.off * W * 0.012;
+      const gw = W * 0.004 * g.len * (0.5 + t * 3) * (1 + s.rms * 0.5 + s.wall * 0.3);
       const near = 1 - Math.min(1, Math.abs(g.off) * 0.85);
       ctx.globalAlpha = near * (0.22 + t * 0.62) * (0.55 + writhe * 0.45)
         * (0.45 + s.rms * 0.5 + s.beatPulse * 0.35 + s.crack * 0.4);

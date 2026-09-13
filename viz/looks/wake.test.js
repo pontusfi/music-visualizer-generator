@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { SLICES, plateDark, sliceAt, sweepX } from "./wake.js";
+import { SLICES, beatShear, plateDark, sliceAt, sweepX } from "./wake.js";
 
 /** A silent frame: every driver at rest. */
 const quiet = (over = {}) => ({
@@ -61,7 +61,8 @@ describe("sweepX", () => {
 
 describe("sliceAt", () => {
   const unit = 1080;
-  const SWELL_MAX = 1 + 1.6 + 0.7;
+  // the widest `swell` the draw path can hand it: 1 + rms*0.8 + wall*0.9 + kick*0.5
+  const SWELL_MAX = 1 + 0.8 + 0.9 + 0.5;
 
   it("meets the plate at the waterline", () => {
     assert.equal(sliceAt(0, SLICES, 137, unit, 0, 0, 0).dx, 0);
@@ -72,7 +73,9 @@ describe("sliceAt", () => {
       for (const i of [0, 13, 137, 9000]) {
         for (const swell of [0, 1, SWELL_MAX]) {
           for (const tear of [0, 1]) {
-            for (const shear of [-0.5, 0, 0.5]) {
+            // shear is sin(beatPhase*2pi) * wall * 0.6, so it lives in
+            // [-0.6, 0.6]; swept past that to leave the bound some room
+            for (const shear of [-1, -0.6, 0, 0.6, 1]) {
               const { dx } = sliceAt(n, SLICES, i, unit, swell, tear, shear);
               assert.ok(Math.abs(dx) <= unit * 0.12,
                 `slice ${n} displaced ${dx} at swell=${swell} tear=${tear} shear=${shear}`);
@@ -108,5 +111,33 @@ describe("sliceAt", () => {
     const a = sliceAt(12, SLICES, 137, unit, 2, 0.5, 0.2);
     const b = sliceAt(12, SLICES, 137, unit, 2, 0.5, 0.2);
     assert.deepEqual(a, b);
+  });
+});
+
+describe("beatShear", () => {
+  it("joins up across the beat instead of snapping", () => {
+    // `beatPhase` is a sawtooth. Reading it directly threw the reflection from
+    // one extreme to the other in a single frame at every beat, which is the
+    // jolt this exists to prevent.
+    const end = beatShear(quiet({ beatPhase: 1, wall: 1 }));
+    const start = beatShear(quiet({ beatPhase: 0, wall: 1 }));
+    assert.ok(Math.abs(end - start) < 1e-9, `snaps ${start} -> ${end} at the beat`);
+  });
+
+  it("is already easing back to rest before the wrap", () => {
+    for (const beatPhase of [0.97, 0.98, 0.99]) {
+      assert.ok(Math.abs(beatShear(quiet({ beatPhase, wall: 1 }))) < 0.2);
+    }
+  });
+
+  it("holds inside the range sliceAt is bounded over", () => {
+    for (let n = 0; n <= 100; n += 1) {
+      const v = beatShear(quiet({ beatPhase: n / 100, wall: 1 }));
+      assert.ok(Math.abs(v) <= 0.6 + 1e-9, `shear ${v} out of range`);
+    }
+  });
+
+  it("leaves a quiet passage unsheared", () => {
+    assert.ok(beatShear(quiet({ beatPhase: 0.25 })) === 0);
   });
 });

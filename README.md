@@ -317,7 +317,7 @@ reachable state any more, not that it is merely one option among several.
 
 | id | what it draws | per-frame cost |
 |---|---|---|
-| `bloodtide` | a red moon low on the horizon and the sea it is lighting: a cracked disc cross-faded between three baked discs — lit face, unlit limb, and a craquelure that opens on the low end — under a corona that flashes on the kick; cinders climb the sky, two cloud decks cross at their own rates, heat lightning answers hard downbeats on the far right, and 46 bands of water heave on a swell that breaks apart on every transient, with the glitter path writhing across the crests | 11 `drawImage` + 3 batched strokes + ~414 rects, up to ~475 mid-transient |
+| `bloodtide` | a red moon low on the horizon and the sea it is lighting: a cracked disc cross-faded between three baked discs — lit face, unlit limb, and a craquelure that opens on the low end — under a corona that flashes on the kick; cinders climb the sky, two cloud decks cross at their own rates, heat lightning answers hard downbeats on the far right, and 46 bands of water heave on a swell that a transient roughens into chop, with the glitter path writhing across the crests | 11 `drawImage` + 3 batched strokes + ~414 rects |
 | `emberstorm` | the whole frame on fire: three plume sheets scrolling upward at their own rates, fifteen tongues along the floor, sparks, and a smoke cap over the top | 12 `drawImage` + 15 blurred fills |
 | `choke` | two decks of smoke crossing at different scales, god rays over the top, and a gust that shoves everything sideways on a transient and drifts back | 8 `drawImage` + 90 specks |
 | `smelt` | a pour: seven molten streams falling into a pool that ripples on the low end, splashes where each lands, and slag spitting back up out of it. Default — the field `chrome` hangs its mirror over. | ~20 gradient fills + 70 specks |
@@ -393,7 +393,22 @@ how fast calls can be queued, not how long the frame takes.
 `wake` x `bloodtide` was re-timed when the sea was given real motion: 23.5 ms
 against 29.0 ms for the pair before and after, measured back to back on the
 same host, so the moving water, the cinder field and the three-blit moon cost
-about 23%. Its GPU figure is deliberately blank rather than stale. Forcing the
+about 23%. Take the figure as +/- a millisecond: repeated runs on a warm
+machine drift to about 32 ms, and the number quoted is the fastest of several
+cold ones, which is the same convention the rest of the column uses.
+
+One rule decides where a signal is allowed to go, and it is worth stating
+because breaking it does not fail a test, it just looks wrong: **geometry moves
+on the slow envelopes, brightness flashes on the fast ones.** `kick`, `hit` and
+`crack` have attacks measured in a frame or two, so driving a position or a
+size from them makes the picture twitch rather than dance — the sea flinching
+on every beat, the moon strobing ten percent, the sky lurching whenever the
+drums came in. They belong in alpha, where a one-frame attack reads as a hit
+landing. `rms`, `wall` and `arc` move over a bar, a riff and a phrase, and they
+are what the water, the disc and the record are sized and placed by. The two
+sawtooth phases need care of their own: `beatPhase` and `barPhase` wrap, so
+anything driven by them has to be periodic across the seam (a sine) or already
+off-screen when it gets there, or the wrap is a visible jump once a beat. Its GPU figure is deliberately blank rather than stale. Forcing the
 draw queue to flush needs a readback, and a per-frame readback stalls the GPU
 pipeline hard enough to measure round-trip latency instead of frame cost — the
 same harness returns 30.7 ms for the *unchanged* code where this table records
