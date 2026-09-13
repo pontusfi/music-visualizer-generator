@@ -271,7 +271,7 @@ picks one — `render.py --look`, or the picker in the web UI.
 
 | id | what it does |
 |---|---|
-| `wake` | the record on the horizon of a red sea. It stands on the waterline so Bloodtide's moon rises behind it and rims its edges, held near silhouette by a scrim that lifts with the loudness; below, forty slices of inverted cover ripple in the water and tear apart on every transient. Imports `HORIZON` from `viz/backgrounds/bloodtide.js` — the one look that reads its partner. |
+| `wake` | the record on the horizon of a red sea. It stands on the waterline so Bloodtide's moon rises behind it and rims its edges, lit from the left and wiped once a bar by a sweep of light off the water, held near silhouette by a scrim that lifts with the loudness and that a downbeat takes off entirely; below, forty slices of inverted cover ripple, shear sideways with the beat and tear apart on every transient, under caustics bent across the surface. Imports `HORIZON` from `viz/backgrounds/bloodtide.js` — the one look that reads its partner. |
 | `pyre` | the record on the fire. Eleven flame tongues climb the face as quadratics whose control points are sines of the frame index, every kick throws a flare up it, and a baked rim of char is drawn at an alpha that rises with `progress` — so a three-minute single and a twelve-minute epic both finish equally burnt. |
 | `miasma` | the cover taken by the smoke. The artwork is composited through a moving blob mask on a scratch canvas, so the bank eats pieces of it and hands them back; how much survives is the loudness, so a breakdown nearly erases the record and the chorus brings it whole. One rim light and a hairline keep the top edge findable. |
 | `chrome` | the record in polished steel over a mercury pool. Forty-four slices of the artwork redrawn upside down and displaced by a travelling sine, a bevel that reads as metal, a specular sweep that wipes the plate once per bar off `barPhase`, and a title filled with a real chrome ramp. The plainest draw path of the five. |
@@ -317,7 +317,7 @@ reachable state any more, not that it is merely one option among several.
 
 | id | what it draws | per-frame cost |
 |---|---|---|
-| `bloodtide` | a red moon low on the horizon and the sea it is lighting: mottled disc with a corona that swells on the kick, cloud bands crossing it, and 46 bands of water compressed toward the horizon with the moon's glitter path broken across the crests | 4 `drawImage` for the clouds + ~370 rects |
+| `bloodtide` | a red moon low on the horizon and the sea it is lighting: a cracked disc cross-faded between three baked discs — lit face, unlit limb, and a craquelure that opens on the low end — under a corona that flashes on the kick; cinders climb the sky, two cloud decks cross at their own rates, heat lightning answers hard downbeats on the far right, and 46 bands of water heave on a swell that breaks apart on every transient, with the glitter path writhing across the crests | 11 `drawImage` + 3 batched strokes + ~414 rects, up to ~475 mid-transient |
 | `emberstorm` | the whole frame on fire: three plume sheets scrolling upward at their own rates, fifteen tongues along the floor, sparks, and a smoke cap over the top | 12 `drawImage` + 15 blurred fills |
 | `choke` | two decks of smoke crossing at different scales, god rays over the top, and a gust that shoves everything sideways on a transient and drifts back | 8 `drawImage` + 90 specks |
 | `smelt` | a pour: seven molten streams falling into a pool that ripples on the low end, splashes where each lands, and slag spitting back up out of it. Default — the field `chrome` hangs its mirror over. | ~20 gradient fills + 70 specks |
@@ -384,11 +384,24 @@ how fast calls can be queued, not how long the frame takes.
 
 | look x background | SwiftShader | RTX 4060 Ti |
 |---|---|---|
-| `wake` x `bloodtide` | 22.3 ms | 18.1 ms |
+| `wake` x `bloodtide` | 29.0 ms | not re-measured |
 | `pyre` x `emberstorm` | 73.5 ms | 10.4 ms |
 | `miasma` x `choke` | 19.6 ms | 9.1 ms |
 | `chrome` x `smelt` | 17.0 ms | 14.2 ms |
 | `totem` x `storm` | 11.7 ms | 9.5 ms |
+
+`wake` x `bloodtide` was re-timed when the sea was given real motion: 23.5 ms
+against 29.0 ms for the pair before and after, measured back to back on the
+same host, so the moving water, the cinder field and the three-blit moon cost
+about 23%. Its GPU figure is deliberately blank rather than stale. Forcing the
+draw queue to flush needs a readback, and a per-frame readback stalls the GPU
+pipeline hard enough to measure round-trip latency instead of frame cost — the
+same harness returns 30.7 ms for the *unchanged* code where this table records
+18.1. Amortising the sync over a long batch does not rescue it either: nothing
+ever reads the intermediate frames, so the driver is free to discard them, and
+the run reports about 1 ms. The other four rows are the original author's
+numbers and are untouched; the column wants one re-measurement pass with a
+harness that settles this, not a fifth number obtained a sixth way.
 
 `pyre` and `emberstorm` are the only two modules that set `ctx.filter`, and
 that blur on the flame tongues is essentially their whole cost — a fire
@@ -401,11 +414,17 @@ above. A blur is a low-pass filter, so the detail a third-size buffer discards
 is detail the blur was about to destroy: the frames are indistinguishable.
 `FLAME_SCALE` in each module is the knob if it needs to go further.
 
-Everything else sits in a band between about 12 and 22 ms, which is the same
+Everything else sits in a band between about 12 and 29 ms, which is the same
 shape of cost as the old Canvas2D catalogue. `wake` is the most expensive of
-the rest on the GPU because Bloodtide draws some 370 rects a frame for the sea
-and its glitter path, and rect count is the one thing the GPU does not make
-free.
+the rest because Bloodtide draws upwards of 414 rects a frame for the sea and
+its glitter path, and rect count is the one thing the GPU does not make free.
+That is also why everything added to it since is baked at init and blitted or
+batched at draw: the cinder field is 54 particles laid down as three
+`beginPath`/`stroke` pairs rather than 54 rects, and the moon is three
+pre-clipped discs cross-faded by alpha rather than a clip and a gradient per
+frame. A full-frame `raySheet` of moonbeams was cut for the same reason — four
+`drawImage` under `lighter` over 2 Mpx would have cost more than everything
+else added put together.
 
 **Two caveats, both measured rather than assumed.**
 

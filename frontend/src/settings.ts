@@ -245,7 +245,7 @@ export const LOOKS: Look[] = [
   {
     id: "wake",
     name: "Wake",
-    note: "the record on the horizon of a red sea, lit from behind by the moon",
+    note: "the record standing in a red sea, swept once a bar by the light off it",
   },
   {
     id: "pyre",
@@ -282,7 +282,7 @@ export const BACKGROUNDS: Background[] = [
   {
     id: "bloodtide",
     name: "Bloodtide",
-    note: "a red moon low on the horizon, and the sea it is lighting",
+    note: "a cracked red moon over a heaving sea, with cinders in the sky",
   },
   {
     id: "emberstorm",
