@@ -142,6 +142,36 @@ export function sprayAt(p, age, life, lift) {
  * pushes the disc down as well as out, and it is the bottom edge that gives
  * first.
  */
+/**
+ * How hot the cracks across the moon's face are burning.
+ *
+ * This is a flash, and flashes belong on the fast envelopes — the rule that
+ * geometry rides the slow ones cuts the other way for brightness. Driven from
+ * `wall` and `arc` the cracks sat on a dim plateau that never spiked, so they
+ * read as a permanent stain rather than as the disc splitting on the hit;
+ * floored, they were simply always on.
+ *
+ * Two things make it a flash rather than a glow. The threshold throws away the
+ * bottom half of the kick, so the drum merely ticking along does nothing and
+ * only a hit the track actually leans on opens the moon. And squaring what is
+ * left bends the response convex, so it snaps rather than fades up.
+ */
+export function veinAlpha(s) {
+  const hit = Math.max(0, s.kick - 0.45) / 0.55;
+  return Math.min(0.9, hit * hit * 0.78 + s.downbeatPulse * 0.30);
+}
+
+/**
+ * How deep the unlit limb sits.
+ *
+ * Capped well short of opaque: the disc underneath is already dark, and a
+ * shadow heavy enough to bury its mottling turns the moon into a hole in the
+ * sky rather than a body in it.
+ */
+export function limbAlpha(s) {
+  return Math.min(0.6, 0.42 * (1 - s.arc) + 0.18 * (1 - s.rms));
+}
+
 export function moonPlace(s, progress, base, W, H) {
   // Mostly `rms` and `wall`. A disc that jumped ten percent on every kick read
   // as a strobe rather than as a body breathing; the kick's share of the size
@@ -242,8 +272,12 @@ export function init(a) {
     const dir = ang + (r() - 0.5) * 2.4;
     const pts = boltPath(r, x0, y0, x0 + Math.cos(dir) * run, y0 + Math.sin(dir) * run,
       d * 0.035, 4);
-    strokeBolt(v, pts, "rgba(150,30,20,0.28)", "rgba(255,150,96,0.42)",
-      Math.max(1, d * 0.0022));
+    // Cutting these back was how the first version stopped reading as a plasma
+    // ball, but it went too far and left them faint enough to disappear the
+    // moment the draw alpha dropped. The fix for "too much" was the scattered
+    // origins and the dim core, not thin dark lines.
+    strokeBolt(v, pts, "rgba(150,30,20,0.34)", "rgba(255,150,96,0.62)",
+      Math.max(1, d * 0.0030));
   }
   a.tideVeins = veins;
 
@@ -384,11 +418,11 @@ export function draw(ctx, s, a) {
   ctx.drawImage(a.tideMoon, mx - d / 2, my - d / 2, d, d);
   // the unlit limb, deepest through the quiet parts and burning back off as
   // the track comes up
-  ctx.globalAlpha = Math.min(0.9, 0.55 * (1 - s.arc) + 0.25 * (1 - s.rms));
+  ctx.globalAlpha = limbAlpha(s);
   ctx.drawImage(a.tideMoonDark, mx - d / 2, my - d / 2, d, d);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = Math.min(0.72, s.wall * 0.34 + s.arc * 0.22 + s.kick * 0.26);
+  ctx.globalAlpha = veinAlpha(s);
   ctx.drawImage(a.tideVeins, mx - d / 2, my - d / 2, d, d);
   ctx.globalAlpha = 1;
 

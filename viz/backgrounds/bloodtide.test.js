@@ -9,13 +9,16 @@ import {
   crestAt,
   eventSeed,
   heaveOf,
+  limbAlpha,
   moonPlace,
   sprayAt,
+  veinAlpha,
 } from "./bloodtide.js";
 
 /** A silent frame: every driver at rest. */
 const quiet = (over = {}) => ({
-  kick: 0, wall: 0, arc: 0, rms: 0, drive: 0, sectionPhase: 0, ...over,
+  kick: 0, wall: 0, arc: 0, rms: 0, drive: 0, sectionPhase: 0,
+  downbeatPulse: 0, ...over,
 });
 
 /** The frame geometry the draw path hands the helpers, at 1080p landscape. */
@@ -242,5 +245,58 @@ describe("moonPlace", () => {
     assert.equal(still, base);
     assert.ok(loud > still);
     assert.ok(loud <= base * 1.14, `disc grows to ${loud / base} of base`);
+  });
+});
+
+describe("veinAlpha", () => {
+  it("leaves the moon a plain disc when nothing is hitting", () => {
+    // The cracks are a flash, not a feature of the surface. An earlier version
+    // floored them so they were always lit, and the moon read as permanently
+    // broken instead of splitting open when the track hit.
+    assert.equal(veinAlpha(quiet()), 0);
+  });
+
+  it("ignores the low end simply being present", () => {
+    // a kick under the threshold is the drum ticking along, not a moment
+    for (const kick of [0.1, 0.3, 0.45]) {
+      assert.ok(veinAlpha(quiet({ kick })) < 0.05,
+        `a kick of ${kick} already opens the moon`);
+    }
+  });
+
+  it("opens hard when the track actually lands on one", () => {
+    assert.ok(veinAlpha(quiet({ kick: 1 })) > 0.6);
+  });
+
+  it("flashes rather than ramps", () => {
+    // the response has to be convex, or it reads as a glow fading up and down
+    // rather than as the disc cracking on the hit
+    const lo = veinAlpha(quiet({ kick: 0.7 })) - veinAlpha(quiet({ kick: 0.4 }));
+    const hi = veinAlpha(quiet({ kick: 1.0 })) - veinAlpha(quiet({ kick: 0.7 }));
+    assert.ok(hi > lo * 1.5, `response is nearly linear: ${lo} then ${hi}`);
+  });
+
+  it("never blows the disc out to a flat sheet of light", () => {
+    for (const c of cube(["kick", "wall", "arc"])) {
+      assert.ok(veinAlpha({ ...quiet(c), downbeatPulse: 1 }) <= 0.9);
+    }
+  });
+});
+
+describe("limbAlpha", () => {
+  it("shades the disc at rest rather than erasing it", () => {
+    // at 0.8 over a dark bake the moon stopped being a body and became a hole
+    assert.ok(limbAlpha(quiet()) <= 0.6, `limb swallows the moon: ${limbAlpha(quiet())}`);
+  });
+
+  it("burns back off as the track comes up", () => {
+    assert.ok(limbAlpha(quiet({ arc: 1, rms: 1 })) < limbAlpha(quiet()));
+  });
+
+  it("stays a shadow, never a light", () => {
+    for (const c of cube(["arc", "rms"])) {
+      const v = limbAlpha(quiet(c));
+      assert.ok(v >= 0 && v <= 0.6);
+    }
   });
 });
